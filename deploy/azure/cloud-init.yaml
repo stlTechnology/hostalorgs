@@ -1,5 +1,5 @@
 #cloud-config
-# First boot of the game VM (deploy/azure/setup.sh fills @REPO_URL@, @FQDN@, @MAP@).
+# First boot of the game VM (deploy/azure/setup.sh fills @REPO_URL@, @SITES@, @MAP@).
 package_update: true
 package_upgrade: true
 packages: [docker.io, git, caddy, unattended-upgrades, openssl]
@@ -14,7 +14,7 @@ write_files:
   # passes the game's WebSocket through unchanged.
   - path: /etc/caddy/Caddyfile
     content: |
-      @FQDN@ {
+      @SITES@ {
         encode gzip
         reverse_proxy 127.0.0.1:8080
       }

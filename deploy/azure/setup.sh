@@ -14,6 +14,8 @@
 #   BUDGET     monthly budget in USD           (default: 20)
 #   EMAIL      budget alert address            (default: your az account's user)
 #   SSH_FROM   IP allowed to SSH               (default: this machine's public IP)
+#   DOMAIN     your own name too, e.g. hostalorgs.sheebiegame.com: add a DNS CNAME
+#              from it to $NAME.$LOCATION.cloudapp.azure.com and HTTPS follows
 #
 # What it creates (all in resource group "$NAME-rg", delete that group to remove
 # everything): VM, disk, public IP with DNS name $NAME.$LOCATION.cloudapp.azure.com,
@@ -30,6 +32,7 @@ EMAIL="${EMAIL:-$(az account show --query user.name -o tsv)}"
 SSH_FROM="${SSH_FROM:-$(curl -fsS https://api.ipify.org)}"
 RG="$NAME-rg"; VM="$NAME-vm"
 FQDN="$NAME.$LOCATION.cloudapp.azure.com"
+SITES="$FQDN${DOMAIN:+, $DOMAIN}"
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 echo "== resource group $RG in $LOCATION"
@@ -37,7 +40,7 @@ az group create -n "$RG" -l "$LOCATION" -o none
 
 echo "== cloud-init for $FQDN (repo $REPO_URL, map $MAP)"
 INIT="$(mktemp)"
-sed -e "s|@REPO_URL@|$REPO_URL|g" -e "s|@FQDN@|$FQDN|g" -e "s|@MAP@|$MAP|g" \
+sed -e "s|@REPO_URL@|$REPO_URL|g" -e "s|@SITES@|$SITES|g" -e "s|@MAP@|$MAP|g" \
     "$HERE/cloud-init.yaml" > "$INIT"
 
 echo "== VM $VM ($SIZE, Ubuntu 24.04, SSH key only)"
@@ -69,4 +72,5 @@ az rest --method put \
 echo
 echo "Done. The VM builds and starts the game on first boot (about 10 minutes)."
 echo "Then open: https://$FQDN/"
+if [ -n "${DOMAIN:-}" ]; then echo "and, once its CNAME points at $FQDN: https://$DOMAIN/"; fi
 echo "Remove everything: az group delete -n $RG"
