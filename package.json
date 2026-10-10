@@ -15,5 +15,5 @@
   "dependencies": {
     "ws": "^8.22.0"
   },
-  "license": "MIT"
+  "license": "(GPL-2.0-or-later AND MIT AND CC-BY-4.0)"
 }

@@ -61,5 +61,11 @@ Tests live in `tests/` (real servers and headless browsers; e.g.
 
 ## Licence
 
-GPL-2.0 (see `LICENSE`), the same as the engine. Third-party content keeps its
-own licence; see `ASSETS-CREDITS.md` and `web/licences/`.
+Three licences, by part (details and paths in `LICENSING.md`):
+
+- **Game code** (`qwtf/`, built on id Software's GPL QuakeC): GPL-2.0-or-later, `LICENSE`.
+- **Our map, textures and sounds**: CC BY 4.0, `LICENSE-CC-BY-4.0.txt`.
+- **Our scripts, tools, server front door and web pages**: MIT, `LICENSE-MIT.txt`.
+
+The FTE engine is GPL-2.0. Third-party content keeps its own licence; see
+`ASSETS-CREDITS.md` and `web/licences/`.
