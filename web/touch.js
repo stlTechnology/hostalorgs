@@ -28,7 +28,7 @@
    * wherever the thumb lands on the left half). */
   const STICK_X = 0.2, STICK_Y = 0.7;
   const DEAD = 16;          // px of thumb travel before a direction is held
-  let LOOK = 2.2;           // mouse units per px of drag on the right half
+  let LOOK = 4.4;           // mouse units per px of drag on the right half (doubled at the owner's request, 2026-10-10)
 
   /* Buttons: label, the command held while pressed (or tapped), and where.
    * Positions are from the bottom right, in CSS px, sized for a thumb. */

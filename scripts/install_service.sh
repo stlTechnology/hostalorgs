@@ -63,6 +63,7 @@ SECRET_FILE="$SECRETDIR/gate.env"
 SV_UNIT="qwtf-server.service"
 WEB_UNIT="qwtf-web.service"
 
+SERVER_EXTRA=""
 DRY_RUN=0
 UNINSTALL=0
 # Which map the game server loads. forts is the default since 0479 moved the
@@ -87,6 +88,7 @@ usage: install_service.sh [--deploy <commit>] [--uninstall] [--dry-run]
   --deploy <c>     snapshot commit <c>, write the units, restart both
   --uninstall      stop and remove both units, the secret and the firewall rule
   --map <name>     the map the game server loads (default ctf)
+  --bots           run the defender bots (+set qwtf_bots 1), as the Azure server does
   --dry-run        print what would be written, change nothing
 EOF
 }
@@ -104,6 +106,7 @@ while [ $# -gt 0 ]; do
       ;;
     --uninstall) UNINSTALL=1; shift ;;
     --map) MAP="$2"; shift 2 ;;
+    --bots) SERVER_EXTRA="+set qwtf_bots 1"; shift ;;
     --dry-run)   DRY_RUN=1; shift ;;
     -h|--help)   usage; exit 0 ;;
     *)           echo "FATAL: unknown argument '$1'" >&2; usage; exit 2 ;;
@@ -345,7 +348,7 @@ WorkingDirectory=$ROOT
 # reachable from outside, and it pipes to this port on 127.0.0.1.
 # --map is explicit rather than left to run_server.sh's default, so
 # "systemctl cat qwtf-server" answers "which map is live".
-ExecStart=$ROOT/scripts/run_server.sh --port $SV_PORT --host 127.0.0.1 --gamedir $WEBROOT --map $MAP
+ExecStart=$ROOT/scripts/run_server.sh --port $SV_PORT --host 127.0.0.1 --gamedir $WEBROOT --map $MAP${SERVER_EXTRA:+ $SERVER_EXTRA}
 # Keep the game port off the network on every start, and take the rule back out
 # on every stop, so it survives a reboot (reviewer 0074). A rule added once by
 # the installer would not.
