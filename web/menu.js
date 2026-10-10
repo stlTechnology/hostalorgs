@@ -279,6 +279,51 @@ function flushPending() {
     }
   }
 
+  /* A connection that fails or drops leaves the engine on its own error box
+   * (owner, 2026-10-10: "when a user is disconnected or broken in some way, it
+   * says no"). These are the engine's own lines for that (client/cl_main.c,
+   * common/net_*.c); on any of them the page goes back to the landing page,
+   * where Play starts a fresh session. "Leave" in our menu is a plain
+   * disconnect and prints none of them. */
+  const LOST_RE = /^(Unable to connect to .*giving up|Connection lost or aborted|Server disconnected|Host_EndGame:)/;
+  let lostTimer = null;
+  function connectionLost(line) {
+    if (lostTimer) return;
+    try {
+      const note = el('div', { 'data-qwtf-lost': '1', style:
+        'position:fixed;inset:0;z-index:100;display:flex;align-items:center;justify-content:center;' +
+        'background:rgba(6,8,12,.88);color:#dfe6ef;font:600 18px/1.5 system-ui,sans-serif;text-align:center;padding:24px' },
+        'Connection lost. Taking you back to the start...');
+      document.body.appendChild(note);
+    } catch (e) { /* no DOM yet: just go */ }
+    api._redirecting = true;
+    lostTimer = setTimeout(() => {
+      try { window.location.href = new URL('/', window.location.href).href; } catch (e) {}
+    }, 2500);
+  }
+
+  /* The engine prints nothing when the server simply goes away (measured: a
+   * killed server left no line in 45 s; the engine waits out its own timeout).
+   * So the game's WebSocket itself is watched: when it closes, the player is
+   * taken back to the start. Leaving through our menu ends there too. */
+  function watchGameSocket() {
+    if (api._wsWatched || typeof window === 'undefined' || !window.WebSocket) return;
+    api._wsWatched = true;
+    const Orig = window.WebSocket;
+    function Watched(url, protocols) {
+      const ws = protocols === undefined ? new Orig(url) : new Orig(url, protocols);
+      /* Only a connection that WORKED and then closed: one that never opened
+       * gets the engine's own retries, then its "giving up" line (LOST_RE). */
+      let opened = false;
+      ws.addEventListener('open', () => { opened = true; });
+      ws.addEventListener('close', () => { if (opened) connectionLost('socket closed'); });
+      return ws;
+    }
+    Watched.prototype = Orig.prototype;
+    for (const k of ['CONNECTING', 'OPEN', 'CLOSING', 'CLOSED']) Watched[k] = Orig[k];
+    window.WebSocket = Watched;
+  }
+
   /* Wrap console.log once. The engine's console output is the ONLY channel
    * the server's lobby state reaches the page through, and this is where the
    * lines are complete. The wrapper is transparent: everything it does not
@@ -292,6 +337,7 @@ function flushPending() {
         const s = args.map(a => (typeof a === 'string' ? a : String(a.value !== undefined ? a.value : a))).join(' ');
         const t = s.trim();
         if (t.startsWith('You: ') || t.startsWith('Players: ')) handleLine(t);
+        else if (LOST_RE.test(t)) connectionLost(t);
       } catch (e) { /* never let the hook break the page */ }
       return orig(...args);
     };
@@ -626,6 +672,15 @@ function flushPending() {
        * something opened it, which is a null check every caller has to remember. */
       api.build();
       installConsoleHook();
+      watchGameSocket();
+      /* The engine asks "quit this game like everything else?" on every unload.
+       * Fine when a player closes the tab mid-game; not when the connection is
+       * already gone and the page is taking them back to the start (a browser
+       * dialog in the way, measured). Registered before the engine's, so it can
+       * stop the engine's listener for that one case. */
+      window.addEventListener('beforeunload', (e) => {
+        if (api._redirecting) e.stopImmediatePropagation();
+      }, true);
       /* window capture: runs before FTE's document capture listener, so ESC can
        * be taken before the engine ever sees it. See the note at the top. */
       const onKey = (e) => {

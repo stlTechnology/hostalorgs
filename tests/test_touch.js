@@ -81,6 +81,10 @@ class Client {
   on(m) {
     if (m.id && this.pending.has(m.id)) { const p = this.pending.get(m.id); this.pending.delete(m.id);
       return m.error ? p.reject(new Error(JSON.stringify(m.error))) : p.resolve(m.result); }
+    if (m.method === 'Page.javascriptDialogOpening') {
+      this.logs.push('DIALOG ' + m.params.type + ': ' + m.params.message);
+      this.send('Page.handleJavaScriptDialog', { accept: true }).catch(() => {});
+    }
     if (m.method === 'Runtime.consoleAPICalled')
       this.logs.push((m.params.args || []).map(a => a.value !== undefined ? String(a.value) : '').join(' '));
   }
@@ -201,6 +205,24 @@ async function main() {
     if (drift < 24) ok(`a touch on a button does not reach the engine (moved ${drift.toFixed(0)} units while firing)`);
     else bad('a button touch leaked into the engine', `moved ${drift.toFixed(0)} units while holding FIRE`);
     await c.screenshot(path.join(ART, 'phone.png'));
+
+    // 6. the server goes away: the page says so and goes back to the start
+    // (owner, 2026-10-10: a broken connection left players on an error box)
+    try { process.kill(-sv.pid, 'SIGKILL'); } catch (e) {}
+    let gone = null;
+    for (let i = 0; i < 90 && !gone; i++) { await sleep(500);
+      try { gone = await Promise.race([sleep(2000).then(() => null), c.eval(`(location.pathname === '/' || !!document.querySelector('[data-qwtf-lost]')) ?
+        (document.querySelector('[data-qwtf-lost]') ? 'notice' : '') + ' ' + location.pathname : null`)]); } catch (e) {} }
+    // While the page navigates, an evaluate can stall; give each read 2 s.
+    const quick = (expr) => Promise.race([c.eval(expr).catch(() => ''), sleep(2000).then(() => '')]);
+    let at = '';
+    for (let i = 0; i < 20 && at !== '/'; i++) { await sleep(500);
+      try { const h = await c.send('Page.getNavigationHistory');
+        const u = new URL(h.entries[h.currentIndex].url); at = u.pathname + u.search; } catch (e) {} }
+    const dialogs = c.logs.filter(l => l.startsWith('DIALOG'));
+    if (dialogs.length) bad('a browser dialog got in the way of going back to the start', dialogs.join(' | '));
+    if (gone && at === '/') ok(`when the server goes away the page says so and returns to the start (${gone.trim()} -> ${at})`);
+    else bad('a lost connection did not return the player to the start', `seen ${gone}; now at ${at}; console tail: ${c.logs.slice(-8).join(' | ')}`);
   } finally {
     await c.stop();
     try { process.kill(-page.pid, 'SIGKILL'); } catch (e) {}
