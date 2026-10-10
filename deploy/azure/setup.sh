@@ -16,6 +16,9 @@
 #   SSH_FROM   IP allowed to SSH               (default: this machine's public IP)
 #   DOMAIN     your own name too, e.g. hostalorgs.sheebiegame.com: add a DNS CNAME
 #              from it to $NAME.$LOCATION.cloudapp.azure.com and HTTPS follows
+#   SITE_DOMAINS  names that serve the studio page (repo site/); default: the
+#              DOMAIN's parent and its www, e.g. "sheebiegame.com, www.sheebiegame.com".
+#              Point those at the VM too (Cloudflare: CNAME @ and www). "" = none.
 #
 # What it creates (all in resource group "$NAME-rg", delete that group to remove
 # everything): VM, disk, public IP with DNS name $NAME.$LOCATION.cloudapp.azure.com,
@@ -33,6 +36,10 @@ SSH_FROM="${SSH_FROM:-$(curl -fsS https://api.ipify.org)}"
 RG="$NAME-rg"; VM="$NAME-vm"
 FQDN="$NAME.$LOCATION.cloudapp.azure.com"
 SITES="$FQDN${DOMAIN:+, $DOMAIN}"
+if [ -z "${SITE_DOMAINS+set}" ] && [ -n "${DOMAIN:-}" ]; then
+  SITE_DOMAINS="${DOMAIN#*.}, www.${DOMAIN#*.}"
+fi
+SITE_DOMAINS="${SITE_DOMAINS:-}"
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 echo "== resource group $RG in $LOCATION"
@@ -40,7 +47,7 @@ az group create -n "$RG" -l "$LOCATION" -o none
 
 echo "== cloud-init for $FQDN (repo $REPO_URL, map $MAP)"
 INIT="$(mktemp)"
-sed -e "s|@REPO_URL@|$REPO_URL|g" -e "s|@SITES@|$SITES|g" -e "s|@MAP@|$MAP|g" \
+sed -e "s|@REPO_URL@|$REPO_URL|g" -e "s|@SITES@|$SITES|g" -e "s|@SITE_DOMAINS@|$SITE_DOMAINS|g" -e "s|@MAP@|$MAP|g" \
     "$HERE/cloud-init.yaml" > "$INIT"
 
 echo "== VM $VM ($SIZE, Ubuntu 24.04, SSH key only)"
@@ -73,4 +80,5 @@ echo
 echo "Done. The VM builds and starts the game on first boot (about 10 minutes)."
 echo "Then open: https://$FQDN/"
 if [ -n "${DOMAIN:-}" ]; then echo "and, once its CNAME points at $FQDN: https://$DOMAIN/"; fi
+if [ -n "$SITE_DOMAINS" ]; then echo "studio page, once those names point at $FQDN: $SITE_DOMAINS"; fi
 echo "Remove everything: az group delete -n $RG"

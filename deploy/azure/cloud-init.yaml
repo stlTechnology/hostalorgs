@@ -1,5 +1,6 @@
 #cloud-config
-# First boot of the game VM (deploy/azure/setup.sh fills @REPO_URL@, @SITES@, @MAP@).
+# First boot of the game VM (deploy/azure/setup.sh fills @REPO_URL@, @SITES@,
+# @SITE_DOMAINS@, @MAP@).
 # After this, the VM keeps itself current: every 5 minutes it checks GitHub and
 # rebuilds only when there is a new commit (game-update.timer).
 package_update: true
@@ -12,14 +13,14 @@ write_files:
     content: |
       Unattended-Upgrade::Automatic-Reboot "true";
       Unattended-Upgrade::Automatic-Reboot-Time "04:00";
-  # HTTPS in front of the gate; Caddy gets and renews the certificates itself
-  # and passes the game's WebSocket through unchanged.
-  - path: /etc/caddy/Caddyfile
+  # What this VM serves. update.sh writes the Caddy config from it on every
+  # deploy: the game (gate) on SITES, the studio page (repo site/) on SITE_DOMAINS.
+  # Caddy gets and renews every certificate itself.
+  - path: /opt/game/config.env
     content: |
-      @SITES@ {
-        encode gzip
-        reverse_proxy 127.0.0.1:8080
-      }
+      SITES="@SITES@"
+      SITE_DOMAINS="@SITE_DOMAINS@"
+      MAP="@MAP@"
   # Pull the latest commit; rebuild and restart only if it changed (or if the
   # container is not running). FORCE=1 rebuilds anyway.
   - path: /opt/game/update.sh
@@ -36,11 +37,22 @@ write_files:
       if [ "$new" = "$have" ] && [ "$running" = true ] && [ "${FORCE:-0}" != 1 ]; then exit 0; fi
       echo "$(date -Is) deploying $new (was ${have:-none})"
       git reset -q --hard FETCH_HEAD
+      . /opt/game/config.env
+      {
+        printf '%s {\n\tencode gzip\n\treverse_proxy 127.0.0.1:8080\n}\n' "$SITES"
+        if [ -n "$SITE_DOMAINS" ] && [ -d /opt/game/src/site ]; then
+          printf '%s {\n\troot * /opt/game/src/site\n\tencode gzip\n\tfile_server\n}\n' "$SITE_DOMAINS"
+        fi
+      } > /etc/caddy/Caddyfile.new
+      if ! cmp -s /etc/caddy/Caddyfile.new /etc/caddy/Caddyfile; then
+        mv /etc/caddy/Caddyfile.new /etc/caddy/Caddyfile
+        systemctl reload caddy || systemctl restart caddy
+      else rm -f /etc/caddy/Caddyfile.new; fi
       docker build -q --build-arg QWTF_SHA="$new" -t game:"$new" .
       docker rm -f game 2>/dev/null || true
       docker run -d --name game --restart unless-stopped \
         -p 127.0.0.1:8080:8080 \
-        -e GATE_SECRET="$(cat /opt/game/gate.secret)" -e QWTF_MAP=@MAP@ \
+        -e GATE_SECRET="$(cat /opt/game/gate.secret)" -e QWTF_MAP="$MAP" \
         -e QWTF_SERVER_ARGS="+set qwtf_bots 1" \
         --cap-drop ALL --security-opt no-new-privileges \
         --memory 700m --pids-limit 256 \
