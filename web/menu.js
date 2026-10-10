@@ -53,7 +53,7 @@
     },
     team: null,           /* null = server decides */
     cls: null,            /* null = server decides */
-    lobby: { team: 0, cls: 0 },  /* the server's own account: QWTF_YOU lines */
+    lobby: { team: 0, cls: 0 },  /* the server's own account: its "You:" lines */
     /* What the lobby will join as. Pre-selected so nobody starts without a team
      * or class (owner, 2026-10-10): Auto team, Soldier. */
     sel: { team: 'team_auto', cls: 'cls_soldier' },
@@ -230,13 +230,14 @@ function flushPending() {
    * the same output _emscriptenfte_print hands to console.log one line at a
    * time, which is how this page already reads the engine. Two line shapes:
    *
-   *   QWTF_YOU team=<n> class=<n>   the caller's own state, sent on every
-   *                                 lobby state change (join, each pick, the
-   *                                 spawn the second pick triggers)
-   *   QWTF_WHO <red|blue|choosing> <name>   one line per player, the answer
-   *                                 to `cmd qwtf_who`
+   *   You: Red team, Soldier        the caller's own state, sent on entering
+   *                                 the lobby and on every spawn
+   *   Players: a (red) | b (choosing)   one line, the answer to `cmd qwtf_who`
    *
-   * The overlay opens itself when the QWTF_YOU line says the player is in the
+   * Both are written to read as normal game messages, because the engine also
+   * draws every console line on screen for a few seconds.
+   *
+   * The overlay opens itself when the "You:" line says the player is in the
    * lobby -- a fresh visitor lands on the picks without having to find ESC --
    * and closes itself when both picks are made (team != 0 and class != 0 on
    * the same line, which is the spawn the server just did). ESC keeps working
@@ -245,13 +246,18 @@ function flushPending() {
    */
   /* ftos prints whole numbers the way the rest of the trail prints them, and
    * it has printed "1.000000" flavours too; both must parse. */
-  const YOU_RE = /^QWTF_YOU team=([\d.]+) class=([\d.]+)\s*$/;
-  const WHO_RE = /^QWTF_WHO (red|blue|choosing) (.+)$/;
+  /* The server's two readable lines (qwtf/lobby.qc):
+   *   You: Red team, Soldier          (every spawn and on entering the lobby)
+   *   Players: Bot Red (red) | alpha (choosing)   (answer to cmd qwtf_who) */
+  const YOU_RE = /^You: (Red team|Blue team|no team), (Scout|Sniper|Soldier|Demolitions|Heavy|Medic|no class)\s*$/;
+  const WHO_RE = /^Players: (.*?)\s*$/;
+  const TEAM_ID = { 'Red team': 1, 'Blue team': 2, 'no team': 0 };
+  const CLASS_ID = { Scout: 1, Sniper: 2, Soldier: 3, Demolitions: 4, Heavy: 5, Medic: 6, 'no class': 0 };
 
   function handleLine(line) {
     const you = YOU_RE.exec(line);
     if (you) {
-      state.lobby = { team: Math.round(Number(you[1])), cls: Math.round(Number(you[2])) };
+      state.lobby = { team: TEAM_ID[you[1]], cls: CLASS_ID[you[2]] };
       try { api.renderSelection(); } catch (e) { /* not built yet */ }
       try { if (window.QWTF_HELP) window.QWTF_HELP.setClass(state.lobby.team, state.lobby.cls); }
       catch (e) { /* the help panel is optional */ }
@@ -267,8 +273,8 @@ function flushPending() {
     }
     const who = WHO_RE.exec(line);
     if (who) {
-      state.who.push({ team: who[1], name: who[2] });
-      if (state.who.length > 64) state.who.shift();
+      state.who = who[1].split(' | ').map(p => /^(.*) \((red|blue|choosing)\)$/.exec(p))
+        .filter(Boolean).map(m => ({ name: m[1], team: m[2] }));
       api.renderWho();
     }
   }
@@ -284,7 +290,8 @@ function flushPending() {
     console.log = function (...args) {
       try {
         const s = args.map(a => (typeof a === 'string' ? a : String(a.value !== undefined ? a.value : a))).join(' ');
-        if (s.startsWith('QWTF_YOU') || s.startsWith('QWTF_WHO')) handleLine(s);
+        const t = s.trim();
+        if (t.startsWith('You: ') || t.startsWith('Players: ')) handleLine(t);
       } catch (e) { /* never let the hook break the page */ }
       return orig(...args);
     };

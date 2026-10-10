@@ -272,7 +272,7 @@ class Client {
         console.log = function (...a) {
           try {
             const s = a.map(x => typeof x === 'string' ? x : String(x.value !== undefined ? x.value : x)).join(' ');
-            if (s.indexOf('QWTF_YOU') === 0 || s.indexOf('QWTF_WHO') === 0) window.__qwtf_you.push(s);
+            if (s.indexOf('You: ') === 0 || s.indexOf('Players: ') === 0) window.__qwtf_you.push(s);
           } catch (e) {}
           return orig.apply(console, a);
         };
@@ -566,12 +566,11 @@ async function lobbyPhase() {
 
     const you1 = await alpha.youLines();
     const youOk = (Array.isArray(you1) ? you1 : []).some(l => {
-      const m = /^QWTF_YOU team=([\d.]+) class=([\d.]+)/.exec(l);
-      return m && Math.round(+m[1]) === 1 && Math.round(+m[2]) === 0;
+      return /^You: Red team, no class/.test(l);
     });
     check(youOk,
           `the page's console carries the lobby state the menu reads (${you1 ? you1.slice(-2).join(' | ') : 'none'})`,
-          'web/menu.js opens and closes on these QWTF_YOU lines');
+          'web/menu.js opens and closes on these "You: ..." lines');
 
     /* -- the second pick spawns the player ------------------------------------ */
     await alpha.pick('cls_soldier');

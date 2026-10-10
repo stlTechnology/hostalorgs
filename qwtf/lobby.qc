@@ -72,12 +72,32 @@ float(entity e) QWTF_lobby_waiting =
 // The one-line lobby state the menu reads. team and class are the numbers the
 // rest of the event trail uses (0 = not picked yet, 1 red / 2 blue; class 0 =
 // none).
+// A readable line, because the engine draws every console line on screen for
+// a few seconds and "QWTF_YOU team=1 class=3" was the owner's "debug text at
+// the top left" (2026-10-10). web/menu.js parses this exact shape:
+//   You: Red team, Soldier   |   You: no team, no class
+string(float id) QWTF_class_title =
+{
+    if (id == QWTF_CLASS_SCOUT) return "Scout";
+    if (id == QWTF_CLASS_SNIPER) return "Sniper";
+    if (id == QWTF_CLASS_SOLDIER) return "Soldier";
+    if (id == QWTF_CLASS_DEMOLITIONS) return "Demolitions";
+    if (id == QWTF_CLASS_HEAVY) return "Heavy";
+    if (id == QWTF_CLASS_MEDIC) return "Medic";
+    return "no class";
+};
+
 void(entity who) QWTF_lobby_you =
 {
-    sprint(who, PRINT_HIGH, "QWTF_YOU team=");
-    sprint(who, PRINT_HIGH, ftos(who.qwtf_team));
-    sprint(who, PRINT_HIGH, " class=");
-    sprint(who, PRINT_HIGH, ftos(who.qwtf_class));
+    sprint(who, PRINT_HIGH, "You: ");
+    if (who.qwtf_team == QWTF_TEAM_RED)
+        sprint(who, PRINT_HIGH, "Red team");
+    else if (who.qwtf_team == QWTF_TEAM_BLUE)
+        sprint(who, PRINT_HIGH, "Blue team");
+    else
+        sprint(who, PRINT_HIGH, "no team");
+    sprint(who, PRINT_HIGH, ", ");
+    sprint(who, PRINT_HIGH, QWTF_class_title(who.qwtf_class));
     sprint(who, PRINT_HIGH, "\n");
 };
 
@@ -117,29 +137,34 @@ void() QWTF_lobby_observe =
     self.impulse = 0;
 };
 
-// `cmd qwtf_who`: one QWTF_WHO line per player, the lobby list the menu
-// renders. Sent to the requester's console only.
+// `cmd qwtf_who`: ONE readable line listing every player and their side, the
+// lobby list the menu renders (one line, not one per player, so the screen is
+// not filled while the menu is open). Sent to the requester only:
+//   Players: Bot Red (red) | Bot Blue (blue) | alpha (choosing)
 void(entity requester) QWTF_lobby_who =
 {
     local entity e;
-    local float t;
+    local float t, first;
 
+    sprint(requester, PRINT_HIGH, "Players: ");
+    first = 1;
     e = find(world, classname, "player");
     while (e)
     {
-        sprint(requester, PRINT_HIGH, "QWTF_WHO ");
+        if (!first)
+            sprint(requester, PRINT_HIGH, " | ");
+        first = 0;
+        sprint(requester, PRINT_HIGH, e.netname);
         t = e.qwtf_team;
         if (t == QWTF_TEAM_RED)
-            sprint(requester, PRINT_HIGH, "red");
+            sprint(requester, PRINT_HIGH, " (red)");
         else if (t == QWTF_TEAM_BLUE)
-            sprint(requester, PRINT_HIGH, "blue");
+            sprint(requester, PRINT_HIGH, " (blue)");
         else
-            sprint(requester, PRINT_HIGH, "choosing");
-        sprint(requester, PRINT_HIGH, " ");
-        sprint(requester, PRINT_HIGH, e.netname);
-        sprint(requester, PRINT_HIGH, "\n");
+            sprint(requester, PRINT_HIGH, " (choosing)");
         e = find(e, classname, "player");
     }
+    sprint(requester, PRINT_HIGH, "\n");
 };
 
 // ---------------------------------------------------------------------------
