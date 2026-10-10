@@ -1,0 +1,44 @@
+#cloud-config
+# First boot of the game VM (deploy/azure/setup.sh fills @REPO_URL@, @FQDN@, @MAP@).
+package_update: true
+package_upgrade: true
+packages: [docker.io, git, caddy, unattended-upgrades, openssl]
+
+write_files:
+  # Security updates install themselves; reboot at 04:00 if one needs it.
+  - path: /etc/apt/apt.conf.d/52game-unattended
+    content: |
+      Unattended-Upgrade::Automatic-Reboot "true";
+      Unattended-Upgrade::Automatic-Reboot-Time "04:00";
+  # HTTPS in front of the gate; Caddy gets and renews the certificate itself and
+  # passes the game's WebSocket through unchanged.
+  - path: /etc/caddy/Caddyfile
+    content: |
+      @FQDN@ {
+        encode gzip
+        reverse_proxy 127.0.0.1:8080
+      }
+  # Pull the latest commit, rebuild the image, restart the container.
+  - path: /opt/game/update.sh
+    permissions: '0755'
+    content: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+      cd /opt/game/src
+      git fetch --depth 1 origin && git reset --hard origin/HEAD
+      docker build --build-arg QWTF_SHA="$(git rev-parse --short HEAD)" -t game:latest .
+      docker rm -f game 2>/dev/null || true
+      docker run -d --name game --restart unless-stopped \
+        -p 127.0.0.1:8080:8080 \
+        -e GATE_SECRET="$(cat /opt/game/gate.secret)" -e QWTF_MAP=@MAP@ \
+        --cap-drop ALL --security-opt no-new-privileges \
+        --memory 700m --pids-limit 256 \
+        game:latest
+      docker image prune -f >/dev/null
+
+runcmd:
+  - [sh, -c, 'umask 077 && openssl rand -hex 32 > /opt/game/gate.secret']
+  - [git, clone, --depth, '1', '@REPO_URL@', /opt/game/src]
+  - [systemctl, enable, --now, docker]
+  - [/opt/game/update.sh]
+  - [systemctl, restart, caddy]

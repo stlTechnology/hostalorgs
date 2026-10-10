@@ -1,0 +1,41 @@
+{
+	"name": "QWTF",
+	"short_name": "QWTF",
+	"description": "Team deathmatch, straight in the browser.",
+	"categories": ["games"],
+	"id": "./",
+	"start_url": "./",
+	"display": "standalone",
+	"orientation": "landscape",
+	"icons":
+	[
+    	{
+			"src": "icon_48.png",
+			"type": "image/png",
+			"sizes": "48x48"
+    	},
+    	{
+			"src": "icon_144.png",
+			"type": "image/png",
+			"sizes": "144x144"
+    	}
+	],
+	"protocol_handlers":
+	[
+		{
+			"protocol": "web+quake",
+			"url": "./?%s"
+		},
+		{
+			"protocol": "web+qw",
+			"url": "./?%s"
+		}
+	],
+	"serviceworker":
+	{
+		"scope": "./",
+		"src": "./fte_pwa_sw.js",
+		"use_cache": true
+	}
+}
+

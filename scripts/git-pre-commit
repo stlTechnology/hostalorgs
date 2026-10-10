@@ -1,0 +1,101 @@
+#!/usr/bin/env bash
+# 0400: a commit that touches the map cannot go in with a static check nobody ran.
+#
+# `doors` was red for several commits and nobody noticed, including me -- I had reported
+# it green, moved on, and stopped running it. That is the third time in this project the
+# thing that broke was the thing I stopped running (the hand-built BSP, the two colliding
+# suites, and this). So the checks are no longer something to remember to run: this hook
+# runs them on the commits that can break them.
+#
+# It runs only for commits touching the generator, the maps or the tests -- a commit that
+# edits documentation cannot break a brush.
+#
+# There is deliberately no escape hatch. Do NOT add --no-verify to anything: a hook
+# everybody bypasses is a hook that has stopped existing, and that is the same failure with
+# an extra step. If a check is red, either fix the map or take it out of the table in the
+# same commit, in the open.
+#
+# WHAT THIS HOOK DOES *NOT* DO, AND WHY IT IS TWO HOOKS
+# -----------------------------------------------------
+# It runs the checks, refuses on anything newly red, and leaves the table where
+# scripts/git-prepare-commit-msg can find it. The BASELINE-GROWTH guard lives there
+# instead, because it has to read the commit message and git does not give pre-commit
+# one: `git log -1` is the PREVIOUS commit, and .git/COMMIT_EDITMSG still holds the
+# previous commit's message at this point (git writes the new one after the hooks).
+# So a growth guard in pre-commit looked for a word in a message that was not there yet
+# and could not be satisfied by any commit at all. prepare-commit-msg is handed the
+# message file as $1, which is the only place in the sequence where both the table and
+# the message exist.
+set -u
+cd "$(git rev-parse --show-toplevel)"
+
+staged="$(git diff --cached --name-only)"
+touch_map=0
+for f in $staged; do
+  case "$f" in
+    scripts/gen_map.py|scripts/mapfile.py|maps/*|tests/test_forts_map.py|tests/test_ctf_map.py|tests/walk_routes.js)
+      touch_map=1 ;;
+  esac
+done
+[ "$touch_map" -eq 1 ] || exit 0
+
+echo "pre-commit: staged files touch the map, so the static checks run (check_all.sh)."
+echo "pre-commit: this takes a few minutes. If it is red, fix the map or remove the check"
+echo "pre-commit: from the table in the same commit -- do not bypass it."
+OUT_DIR="$(mktemp -d "${TMPDIR:-/tmp}/precommit-XXXXXX")"
+export QWTF_CHECK_ALL_OUT="$OUT_DIR"
+tests/check_all.sh
+
+# A BASELINE of what is already red, committed in the repo (0400). The checks have been
+# red for several commits and some of them are old; refusing every commit until they are
+# all fixed would mean the hook gets bypassed, and a hook everybody bypasses has stopped
+# existing. So it refuses on anything NEW and says so loudly. There is no flag to turn it
+# off -- the baseline file is the only control, and changing it is a reviewable change.
+BASE="tests/check_all.baseline"
+
+# THE TABLE IS $OUT_DIR/table.txt. This used to read "$OUT_DIR/../check_all.table",
+# which does not exist -- check_all.sh writes table.txt INSIDE the directory it was
+# given -- so NOW was always the empty string, `comm` had nothing to compare, the
+# "no NEW failures" line printed unconditionally, and the guard the reviewer asked for
+# in 0400/0403 had never once run. It is the same failure as a check that prints
+# nothing: silent, and looking like it is working. `test -f` is part of it now, so a
+# path that stops existing stops the hook instead of passing it.
+TABLE="$OUT_DIR/table.txt"
+if [ ! -f "$TABLE" ]; then
+  echo
+  echo "pre-commit: REFUSING -- check_all.sh wrote no table at $TABLE."
+  echo "  Without the table there is nothing to compare against the baseline, and a"
+  echo "  guard that cannot see its input is not a guard."
+  exit 1
+fi
+
+# The rows are taken from the table itself rather than re-spelled as a regex here. That
+# list used to say "ctf map" where the row is called "ctf-map", which dropped that row
+# from the comparison without saying so.
+NOW="$(awk 'NF >= 2 {print $1, $2}' "$TABLE" | sort)"
+if [ -f "$BASE" ]; then
+  OLD="$(awk 'NF>=2 {print $1, $2}' "$BASE" | sort)"
+  NEW="$(comm -13 <(echo "$OLD") <(echo "$NOW") | sed '/^$/d')"
+  if [ -n "$NEW" ]; then
+    echo
+    echo "pre-commit: REFUSING -- these checks are NEWLY red:"
+    echo "$NEW" | sed 's/^/  /'
+    echo "  Fix the map, or take the check out of the table in this same commit."
+    echo "  Full output: $OUT_DIR"
+    exit 1
+  fi
+  GONE="$(comm -23 <(echo "$OLD") <(echo "$NOW") | sed '/^$/d')"
+  if [ -n "$GONE" ]; then
+    echo
+    echo "pre-commit: the baseline SHRANK -- these rows are green now:"
+    echo "$GONE" | sed 's/^/  - /'
+    echo "$GONE" | awk '{print "  drop \"" $1 "\" from '"$BASE"' in this same commit"}'
+  fi
+  echo "pre-commit: no NEW failures (the baseline's known reds are unchanged)."
+fi
+
+# Hand the table to the growth guard, which needs the commit message and so runs next.
+cp "$TABLE" "$(git rev-parse --git-dir)/qwtf-check-all.table"
+echo "pre-commit: table kept for the baseline-growth guard (prepare-commit-msg)."
+rm -rf "$OUT_DIR"
+exit 0

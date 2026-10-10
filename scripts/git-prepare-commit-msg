@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+# The baseline-GROWTH guard (0403), and it is here rather than in pre-commit because of
+# WHEN, not what.
+#
+# "A baseline may shrink but never grow": adding a row is how "one more known failure"
+# turns into a suite nobody reads, so growing tests/check_all.baseline takes the word
+# BASELINE: and a reason in the commit message, where the reviewer can see it.
+#
+# A growth guard needs two things: the table of what is red now, and the message being
+# committed. pre-commit has the first and not the second -- `git log -1` during a commit
+# is the PREVIOUS commit, and .git/COMMIT_EDITMSG is still the previous message because
+# git writes the new one after the hooks. It put the guard in pre-commit anyway, so it
+# looked for a word in a message that did not exist yet and refused every commit that
+# had it. prepare-commit-msg is the first hook that is handed the message file as $1,
+# which is the only point in the sequence where both exist.
+#
+# pre-commit copies its table to $GIT_DIR/qwtf-check-all.table. If that file is absent
+# this hook has nothing to say and says nothing -- a guard that runs on data it cannot
+# see is the failure 0400 was about.
+set -u
+cd "$(git rev-parse --show-toplevel)"
+GIT_DIR="$(git rev-parse --git-dir)"
+TABLE="$GIT_DIR/qwtf-check-all.table"
+BASE="tests/check_all.baseline"
+trap 'rm -f "$TABLE"' EXIT
+
+[ -f "$TABLE" ] || exit 0
+# Rows are compared by NAME: a row going from FAIL to ok is the baseline shrinking, and
+# comparing whole lines called every fixed row a new one.
+if git diff --cached --name-only | grep -qx "$BASE" && ! git diff --cached --quiet -- "$BASE"; then
+  if [ -f "$BASE" ]; then
+    added="$(comm -13 <(git show HEAD:"$BASE" 2>/dev/null | awk 'NF>=2 {print $1}' | sort) \
+                      <(awk 'NF>=2 {print $1}' "$BASE" | sort))"
+  else
+    added="$(awk 'NF>=2 {print $1}' "$BASE")"
+  fi
+  if [ -n "$added" ]; then
+    msg_file="${1:-}"
+    if [ -z "$msg_file" ] || [ ! -f "$msg_file" ]; then
+      echo
+      echo "prepare-commit-msg: REFUSING -- this commit GROWS $BASE but git gave me"
+      echo "  no message file, so I cannot see whether it says BASELINE:. Add the row"
+      echo "  and the reason in one commit and it will go through."
+      echo "$added" | sed 's/^/  + /'
+      exit 1
+    fi
+    if ! grep -q 'BASELINE:' "$msg_file"; then
+      echo
+      echo "prepare-commit-msg: REFUSING -- this commit GROWS $BASE:"
+      echo "$added" | sed 's/^/  + /'
+      echo "  A baseline may shrink but never grow. Fix the map, or if the check really"
+      echo "  must go, say so in the commit message:"
+      echo '      git commit -m "... BASELINE: <why this check is removed>"'
+      exit 1
+    fi
+    echo "prepare-commit-msg: the baseline grows, with a BASELINE: reason in the message."
+  fi
+fi
+exit 0

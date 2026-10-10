@@ -1,0 +1,19 @@
+{
+  "name": "qwtf",
+  "version": "1.0.0",
+  "description": "Browser multiplayer class-based team shooter on the FTE QuakeWorld engine (WebAssembly)",
+  "private": true,
+  "type": "commonjs",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "test:menu": "node tests/test_menu.js",
+    "test:lobby": "node tests/test_lobby.js",
+    "test:rules": "node tests/ctf_rules.js"
+  },
+  "dependencies": {
+    "ws": "^8.22.0"
+  },
+  "license": "MIT"
+}

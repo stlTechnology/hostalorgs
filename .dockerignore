@@ -1,0 +1,24 @@
+# The image build copies only what the Dockerfile names; this keeps the build
+# CONTEXT small and keeps unneeded local state out of it. third_party/ is the
+# big one: the build stage fetches fteqw itself (fetch_third_party.sh), so the
+# vendored sources never have to cross the context.
+.git
+.gitignore
+.team
+AGENT.md
+AGENTS.md
+ASSETS-CREDITS.md
+PROJECT.md
+README.md
+build
+crash.log
+client
+node_modules
+package.json
+package-lock.json
+screens
+static
+tests
+third_party
+tools
+web/fte

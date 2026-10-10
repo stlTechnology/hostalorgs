@@ -1,0 +1,177 @@
+// TrenchBroom game definition for OUR entities (0308).
+//
+// TrenchBroom reads .fgd files to know what an entity IS: its classname, its
+// properties, its default values, and how big it draws on screen. Without one,
+// every entity in the editor is a grey cube with an "origin" and nothing else, and
+// the owner is guessing at the keys -- which is how a map ends up with a key on
+// spawnflags 0, meaning NEITHER team.
+//
+// This file lists EXACTLY our entities and nothing else. That is deliberate: an .fgd
+// that also carries a hundred Valve or id Tech definitions teaches the editor about
+// a game we do not ship, and the point of the kit is that what is in here is what
+// will be found in the .map.
+//
+// EVERY DEFAULT HERE WAS READ OUT OF THE REPO, not out of memory:
+//
+//   classnames and keys   maps/forts.map, read back out of the emitted file
+//   team flags            qwtf/ctf.qc: spawnflags 2 is red, 4 is blue (ctf.qc:172,
+//                         and the same test at ctf.qc:475 and ctf.qc:532)
+//   light keys            maps/forts.map worldspawn, and _surface on the panel
+//
+// The sizes are the ones that matter for placing things: a spawn is a point with a
+// facing, a key is a 32-wide pickup on a pedestal, and the turn-in point is a
+// 64-wide pad. A player hull is 32 x 32 x 56 (LibreQuake's, defs.qc:362) and that is
+// the number the whole kit is measured against -- the doorway reference in the
+// template .map is 128 wide because a 128 hole passes a 32 hull with room to spare
+// and 96 does not, which is the MIN_W the corridor check uses.
+
+"QUAKEWORLD"
+{
+    "identity" "our entities only"
+
+    // ---------------------------------------------------------------- world
+
+    EntityDef
+    {
+        "baseclass" "worldspawn"
+        "classname" "worldspawn"
+        "description" "The map itself. Exactly one, and it is what carries the sky keys."
+
+        "property" "message" "description" "Name shown in the console and the scoreboard"
+        "property" "wad"      " wadlist"    "WADs qbsp must load. Keep it exactly: our.wad"
+
+        // These are what make the map lit. Without them the map compiles and looks
+        // black, and the panels in the ceiling look like light but emit nothing --
+        // see the note on _surface below.
+        "property" "light"      "light"      "Ambient light, 0-255. Ours is 0"
+        "property" "_ambient"   "integer"    "Ambient, 0-255. Ours is 20"
+        "property" "_sunlight"  "integer"    "Sun brightness, 0-255. Ours is 220"
+        // _sun_mangle, with the underscore. This was written as "_sunmangle" first
+        // and the check that reads every key out of the emitted maps and compares it
+        // against this file caught it: the maps say _sun_mangle. A misspelt sun key is
+        // the quietest possible failure -- the map compiles, every structural check
+        // passes, and the lighting is simply not what was intended.
+        "property" "_sun_mangle" "string"     "Sun angle, three numbers, space separated"
+        "property" "_sunlight2" "integer"    "Second bounce, 0-255. Ours is 55"
+        "property" "_minlight"  "integer"    "Darkest a corner gets, 0-255. Ours is 32"
+    }
+
+    // ---------------------------------------------------------------- light
+
+    EntityDef
+    {
+        "baseclass" "light"
+        "classname" "light"
+        "description" "A light. A number, or three numbers for a colour."
+
+        "property" "origin" "origin" "Where it hangs. It does not need to touch a wall"
+        "property" "light"  "light"  "Brightness 0-255, or \"r g b\" for a colour"
+
+        // _surface is the one that is easy to get wrong and impossible to see from
+        // the editor: it makes a block in the ceiling LOOK like a light fitting by
+        // naming a texture on it, and on its own it emits NOTHING. A map full of
+        // these and no real light above them is a map that compiles, passes every
+        // structural check, and is dark.
+        //
+        // Our panels use _surface light_fbr with _surface_offset 4.0, and there is a
+        // real light above each one.
+        "property" "_surface"       "texture" "Texture name on a face that should read as a fitting. Emits no light"
+        "property" "_surface_offset" "float"   "How far the surface sits in front of the light. Ours is 4.0"
+    }
+
+    // ---------------------------------------------------------------- spawns
+
+    EntityDef
+    {
+        "baseclass" "info_player_deathmatch"
+        "classname" "info_player_deathmatch"
+        "description" "A player spawn. Put at least four per team."
+
+        "property" "origin" "origin" "The spawn point"
+        "property" "angle"  "angle"  "Facing, in degrees. 0 is +x, 90 is +y"
+
+        // The targetname is not decoration. gen_map writes spawn_0, spawn_1, ...
+        // and the spawn checks count them per team and assert no two coincide, so a
+        // spawn with no targetname is a spawn the checks cannot find.
+        "property" "targetname" "targetname" "Name. Ours are spawn_0, spawn_1, ... in one run"
+    }
+
+    // ---------------------------------------------------------------- key
+
+    EntityDef
+    {
+        "baseclass" "item"
+        "classname" "item_qwtf_key"
+        "description" "A team KEY -- the objective. One per team, in its own half."
+
+        // THE KEY PROPERTY. spawnflags 2 is the red key and 4 is the blue key; 0 is
+        // NEITHER team's key and the map will not work, and it fails silently in the
+        // editor because the entity still draws. This is the single value in this
+        // file most worth getting right.
+        //
+        //   0  no team -- the map is broken, and nothing on screen says so
+        //   2  red team
+        //   4  blue team
+        "property" "spawnflags" "flags"
+        {
+            "name"    "No team - BROKEN, a key must be red (2) or blue (4)"
+            "value"   "0"
+            "description" "spawnflags 0 belongs to neither team. The map will not work."
+            "displayname" "0: no team (BROKEN)"
+        }
+        {
+            "name"    "Red team key"
+            "value"   "2"
+            "description" "Red team's key"
+            "displayname" "2: red team"
+        }
+        {
+            "name"    "Blue team key"
+            "value"   "4"
+            "description" "Blue team's key"
+            "displayname" "4: blue team"
+        }
+
+        "property" "origin"     "origin"     "Where the key sits, on its pedestal"
+        "property" "targetname" "targetname" "Ours are key_red and key_blue"
+    }
+
+    // ---------------------------------------------------------------- turn-in
+
+    EntityDef
+    {
+        "baseclass" "item"
+        "classname" "item_qwtf_stand"
+        "description" "The TURN-IN POINT: carry the enemy key here to score."
+
+        // Same spawnflags test as the key -- bit 1, red or blue -- and the same trap:
+        // 0 means neither team can score there. Ours are stand_red and stand_blue.
+        //
+        // It is on our own battlement in the map we ship, and GAME-DESIGN.md's rule is
+        // that the turn-in centre is EXPOSED to the enemy battlement, so placing this
+        // inside a room the enemy cannot see is the easiest way to make the map dull
+        // and every check will pass.
+        "property" "spawnflags" "flags"
+        {
+            "name"  "No team - BROKEN, a turn-in must be red (2) or blue (4)"
+            "value" "0"
+            "description" "spawnflags 0 belongs to neither team. Nobody can score."
+            "displayname" "0: no team (BROKEN)"
+        }
+        {
+            "name"  "Red team turn-in"
+            "value" "2"
+            "description" "Red team's turn-in point"
+            "displayname" "2: red team"
+        }
+        {
+            "name"  "Blue team turn-in"
+            "value" "4"
+            "description" "Blue team's turn-in point"
+            "displayname" "4: blue team"
+        }
+
+        "property" "origin"     "origin"     "Where a player stands to score"
+        "property" "targetname" "targetname" "Ours are stand_red and stand_blue"
+    }
+}

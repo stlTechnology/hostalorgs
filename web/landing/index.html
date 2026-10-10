@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<!-- The front door. A scanner that fetches this gets these bytes and nothing
+     else: no engine script, no wasm, no third-party request, no connection to a
+     game server. See PROJECT.md "Front door", stage 1.
+
+     Deliberately dull. No game name, no screenshots, nothing that says what is
+     behind it. Pressing Play is what costs us anything. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>Hostalorgs</title>
+<style>
+  body { margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center;
+         background:#111; color:#ddd; font:16px/1.5 system-ui, sans-serif; }
+  main { text-align:center; padding:2rem; }
+  h1 { font-size:1.4rem; font-weight:600; margin:0 0 .5rem; }
+  p  { margin:0 0 1.5rem; color:#999; }
+  button { font:inherit; padding:.6rem 2.5rem; border:1px solid #555; border-radius:4px;
+           background:#222; color:#eee; cursor:pointer; }
+  button:hover:enabled { background:#2c2c2c; }
+  button:disabled { opacity:.5; cursor:default; }
+  .note { font-size:.8rem; color:#777; margin-top:1.5rem; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Web Game</h1>
+  <p>Multiplayer game for the browser.</p>
+  <button id="play" type="button">Play</button>
+  <p class="note" id="status"></p>
+</main>
+<script>
+// Stage 2: ask the gate for a session. It answers with a signed cookie; only
+// then does the game page load anything. No inline engine, no wasm, here.
+(function () {
+  var btn = document.getElementById('play');
+  var status = document.getElementById('status');
+
+  function fail(msg) { status.textContent = msg; btn.disabled = false; }
+
+  btn.addEventListener('click', function () {
+    btn.disabled = true;
+    status.textContent = 'Starting...';
+
+    // Optional proof of work, asked for by the server's response to a bare
+    // request. Kept tiny: a few hundred thousand hashes at most.
+    function nonceFor(bits) {
+      return new Promise(function (resolve, reject) {
+        if (!bits) return resolve(null);
+        var enc = new TextEncoder();
+        var deadline = Date.now() + 15000;
+        (function work() {
+          var n = 0;
+          while (n < 2000000) {
+            var cand = String(n++);
+            crypto.subtle.digest('SHA-256', enc.encode(cand)).then(function (d) {
+              var bits2 = 0;
+              for (var i = 0; i < d[0]; i++) {
+                var b = d[i] < 128 ? d[i] * 2 + (d[i + 1] >> 7) : 0;
+                var z = Math.clz32(b) - 24;
+                bits2 += z;
+                if (z < 8) break;
+              }
+              if (bits2 >= bits) return resolve(cand);
+              if (Date.now() > deadline) return reject(new Error('too slow'));
+              work();
+            });
+            return; // one digest in flight at a time, so we do not flood the UI
+          }
+          reject(new Error('exhausted'));
+        })();
+      });
+    }
+
+    // Ask once. If the gate wants proof of work it answers 403 and says how
+    // many bits, so we do the work and ask again; otherwise the first answer
+    // already carries the cookie and we go straight through.
+    function ask(body) {
+      return fetch('/api/session', {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'content-type': 'application/json' }, body: body,
+      });
+    }
+
+    ask('{}')
+      .then(function (r) {
+        if (r.status === 429) throw 'rate';
+        return r.json().then(function (j) { return { ok: r.ok, body: j }; });
+      })
+      .then(function (first) {
+        if (first.ok) return null;            // cookie is set, nothing more to do
+        var bits = (first.body && first.body.pow) || 0;
+        if (!bits) throw new Error('refused'); // no PoW offered and still refused
+        return nonceFor(bits).then(function (n) { return ask(JSON.stringify({ nonce: n })); });
+      })
+      .then(function (r) {
+        if (r && !r.ok) throw new Error('refused');
+      })
+      .then(function () { location.href = '/play/index.html'; })
+      .catch(function (e) { fail(e === 'rate' ? 'Too many requests. Try again shortly.'
+                                                    : 'Could not start. Try again.'); });
+  });
+})();
+</script>
+</body>
+</html>

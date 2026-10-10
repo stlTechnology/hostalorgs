@@ -1,0 +1,42 @@
+node_modules/
+static/qwtf.js
+static/qwtf.wasm
+*.o
+.emscripten*
+
+# owner game data and other proprietary files: never commit (see PROJECT.md)
+local-assets/
+# user session recordings (large, per-session)
+recordings/
+# per-reader mailbox cursors
+.team/read-*
+# lane mailboxes: per-lane STATE and notes are working state, never tracked.
+# The polish merge put .lane/STATE.md into master (reviewer 0511).
+.lane/
+# auto-generated build stamp
+web/build.json
+
+# vendored third-party sources, fetched by scripts/fetch_third_party.sh
+third_party/
+.team/worker-loop.log
+.team/STOP
+build/
+
+# FTEQW abort dumps (see .team/msg for the cause of the first one)
+crash.log
+
+# test output: demos, screenshots, diagnostics (0037 item 2)
+tests/artifacts/
+
+# FTEQW server writes demos under <basedir>/fte/; tests stage their own
+# gamedir (tests/artifacts/gamedir) so nothing lands here, but never commit it.
+web/fte/
+
+# play-test run artefacts
+build/playtest/
+scripts/__pycache__/
+
+# python bytecode from the map checks
+__pycache__/
+*.pyc
+/.team/tests/

@@ -1,0 +1,180 @@
+// Autoexec for the web client: instant play, no menus, no console, no prompts.
+//
+// This is quake.rc, not default.cfg, and that name matters.  The web client is
+// built with -DOMIT_QCC, so FTE skips the QuakeC startup path in cl_main.c and
+// looks for quake.rc / hexen.rc instead; a default.cfg in the VFS is never read.
+// (SV_SpawnClient in sv_user.c also reads info_player_start's origin out of the
+// QuakeC entity, so the map only gets a camera inside it once progs.dat is
+// present -- see scripts/build_progs.sh.)
+//
+// Written by hand: FTE's config exec is line-based and has no include guard, so
+// this must stay idempotent rather than exec'ing another file that execs back.
+exec config.cfg
+
+// The console, on a key that does not collide with the movement defaults.
+// ---------------------------------------------------------------------------
+// Controls
+//
+// These are OUR binds, written for this game. They are not copied from
+// LibreQuake's cfg.
+//
+// This block exists at all because of a lesson worth recording: we renamed our
+// autoexec from default.cfg to quake.rc (the web build defines DOMIT_QCC, so
+// FTE only execs quake.rc) and in doing so dropped the entire bind block that
+// had been living in default.cfg. The engine then had a working gun, a working
+// server and no way to use either: every key was unbound. That was invisible to
+// the tests for a while, because a browser test can drive CDP input events and
+// a human cannot press an unbound key.
+//
+// Movement
+bind "w"        "+forward"
+bind "s"        "+back"
+bind "a"        "+moveleft"
+bind "d"        "+moveright"
+
+// Look. Up/Down pitch; LEFT/RIGHT turn. +mlook gives freelook on the mouse,
+// which is what players expect from a browser build.
+//
+// LEFT/RIGHT must be +turnleft/+turnright, NOT +moveleft/+moveright: binding
+// them to strafe makes the player unable to turn, and it cost me a test run
+// where alpha fired 15 shots at a stationary target dead ahead and never hit,
+// because the client's own aim was fine but I had broken the turn keys.
+bind "UP"       "+lookup"
+bind "DOWN"     "+lookdown"
+bind "LEFT"     "+turnleft"
+bind "RIGHT"    "+turnright"
++mlook
+
+// Fire. Mouse1 is what a player uses; CTRL is a keyboard alternative because a
+// headless browser cannot reliably deliver a held mouse button to the engine,
+// and tests/mp_combat.js needs to fire deterministically.
+bind "MOUSE1"   "+attack"
+bind "CTRL"     "+attack"
+
+// Jump, crouch, use.
+bind "SPACE"    "+jump"
+bind "SHIFT"    "+speed"      // walk, for careful movement
+bind "e"        "+use"
+
+// Weapons: 1-8 mirror the QuakeC's impulse numbering, and the wheel cycles.
+bind "1"        "impulse 1"
+bind "2"        "impulse 2"
+bind "3"        "impulse 3"
+bind "4"        "impulse 4"
+bind "5"        "impulse 5"
+bind "6"        "impulse 6"
+bind "7"        "impulse 7"
+bind "8"        "impulse 8"
+bind "MWHEELUP"       "impulse 10"   // FTE key names are MWHEELUP/MWHEELDOWN (keys.c); MOUSEWHEELUP bound nothing
+bind "MWHEELDOWN"     "impulse 12"
+
+// Communication and information.
+bind "TAB"      "+showscores"
+bind "t"        "messagemode"
+bind "y"        "say"
+
+// Grenades. GAME-DESIGN.md "Classes": "Keys: G = grenade 1, F = grenade 2",
+// which is impulses 20/21 in qwtf/classes.qc. V and B are the demolitions
+// launcher's own controls (impulse 22 mode toggle, impulse 23 detonate).
+//
+// f was the console key (+cmd) until M5a gave grenades to F. The design says
+// FTE's console stays reachable "only by a dev key or URL flag in test
+// builds" -- it is no longer on any default bind at all, which is the design
+// kept literally.
+bind "g"        "impulse 20"
+bind "f"        "impulse 21"
+bind "v"        "impulse 22"
+bind "b"        "impulse 23"
+
+// The Sniper's scope: hold the right mouse button. The aliases send impulse 30
+// on press and 31 on release (qwtf/sniper.qc); for every other class they do
+// nothing.
+alias +qwtf_zoom "impulse 30"
+alias -qwtf_zoom "impulse 31"
+bind "MOUSE2"   "+qwtf_zoom"
+
+// ---------------------------------------------------------------------------
+// Feel. Always-run, as in the reference: this is a movement shooter and holding
+// shift to sprint would just be friction.
+sensitivity 3
+m_pitch 0.022
+cl_forwardspeed 400
+cl_sidespeed 400
+cl_backspeed 400
+cl_upspeed 320
+cl_movespeedkey 2
+windowed 1
+
+// Deathmatch, and an explicit progs choice.
+//
+// Both matter, for different reasons.  `deathmatch 1` is what makes this a
+// deathmatch game at all.  `sv_progs` pins which QuakeC loads: with both
+// progs.dat and qwprogs.dat in the VFS at the same path depth, FTE picks
+// between them on the deathmatch cvar (server/pr_cmds.c AddProgs), which is
+// implicit and easy to break.  Naming it outright means the web client always
+// gets LibreQuake's deathmatch build -- no monsters, and the deathmatch player
+// logic -- whether or not deathmatch happens to be set yet.
+deathmatch 1
+sv_progs qwprogs.dat
+
+// No public master server: the web client otherwise tries to reach
+// master.frag-net.com on startup and logs a connection failure.
+frag-net 0
+master 0
+
+// No third-party download fallback, and this one is not even ours to allow:
+// FTE's QuakeWorld preset bakes cl_download_mapsrc
+// "https://maps.quakeworld.nu/all/" into every client (engine/common/fs.c
+// QUAKEOVERRIDES). With the alt maps out of the pre-engine manifest (0479),
+// a client joining a corridor or duel server would otherwise fetch its map
+// from that CDN -- a third-party request the page is not allowed to make
+// (PROJECT.md: everything from our own host), and one that failed CORS in
+// the very first run, leaving both clients in the void. The map comes from
+// the server over the game connection instead, which is the same path the
+// sounds take.
+cl_download_mapsrc ""
+
+// NOTE: no `map corridor` here on purpose.
+//
+// The web build is a combined client+server, so `map` makes it spawn a LOCAL
+// server, print "Server spawned.", and then the `connect` in index.html's
+// arguments dials... that local server, not our dedicated one. Every client
+// then "joined the server" convincingly while two independent processes never
+// met, which is exactly what tests/mp_smoke.js caught.
+//
+// The map is loaded by the dedicated server (scripts/run_server.sh), and the
+// client gets it as part of connecting. See the "neither client fell back to
+// its own embedded server" check in that test.
+
+// Connect once the engine is actually up.
+//
+// `connect` is NOT passed in Module.arguments: those become console commands
+// before the network layer exists, and a connect issued there is dropped
+// silently -- the client initialises and then does nothing, with no error
+// anywhere. cl_main.c provides `f_startup` for exactly this case: it fires
+// after the renderer, sound and network are all up, and only when the engine
+// was not already told what to do on the command line.
+//
+// web/index.html rewrites the server address into the qwtf_server cvar (it
+// comes from the page's ?server= query parameter) and defines this alias, so
+// the same build works against a local server and a deployed one.
+alias f_startup "connect $qwtf_server"
+
+// Sounds come from web/id1/sounds.pak: the gameplay subset the progs precache,
+// encoded as Ogg Vorbis by scripts/build_sounds.py (134 files, 9.9 MiB of wav ->
+// 1.6 MiB). The files keep their .wav names because that is what the QuakeC
+// precaches; FTE decodes by content.
+//
+// cl_downloads 0, MEASURED TWICE OVER. Taking the sounds out of the browser's
+// pre-engine manifest (0479's first cut) made the client ask for them at
+// connect; the server served every requested file over the game connection --
+// and then the client never spawned: black canvas indefinitely, console
+// silent after the last download. Still true with every download succeeding
+// (silent placeholders for the six sounds LibreQuake lacks), and with the
+// client-side fs_dlURL HTTP fallback set. The spawn-after-download path in
+// this web build does not fire (STATE.md has the full evidence; the old
+// in-repo history -- "there are ~200 failed downloads to get through first"
+// -- says spawn-after-FAILED-downloads used to complete, so the wedge is
+// specific to completed downloads). Until that is fixed engine-side, the
+// sounds ride the manifest and cl_downloads stays 0.
+cl_downloads 0

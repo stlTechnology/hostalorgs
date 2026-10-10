@@ -1,0 +1,121 @@
+<!-- BEGIN GENERATED (scripts/gen_source_md.py) -->
+
+# Source for the software served from this directory
+
+This game is served as compiled binaries. Under the GNU General Public
+License version 2, which governs the engine and the QuakeC code it runs,
+you are entitled to the corresponding source. This page is that offer; the
+reproduction instructions are below and the exact upstream revisions are
+listed in the table.
+
+Everything here is either GPL v2 or, for the assets, BSD-3-Clause. The
+asset licences and credits are in [`licences/`](licences/) and the full
+inventory is in [`../ASSETS-CREDITS.md`](../ASSETS-CREDITS.md).
+
+## GPL components served from this directory
+
+| Served file | Component | Licence |
+|---|---|---|
+| `ftewebgl.js`, `ftewebgl.wasm` | FTEQW engine (WebGL client) | GPL v2 |
+| `id1/progs.dat`, `id1/qwprogs.dat` | id's QuakeC, from LibreQuake | GPL v2 |
+
+No id/Valve or Team Fortress code or data is present. The QuakeC is id's
+GPL deathmatch progs as redistributed by LibreQuake; our own game code is
+written from scratch on top of them.
+
+## Upstream revisions
+
+Fetched by `scripts/fetch_third_party.sh`, which is idempotent:
+
+```
+git clone <url> && git -C <dir> checkout <commit>
+```
+
+| Directory | Upstream | Commit |
+|---|---|---|
+| `third_party/fteqw` | https://github.com/fte-team/fteqw.git | `f937b9d88f71fc4429db5fe56c6a98d922711b2e` (with submodules) |
+| `third_party/ericw-tools` | https://github.com/ericwa/ericw-tools.git | `36eec1da2a194467e6baac2f444c2dd04b57d266` (with submodules) |
+| `third_party/LibreQuake` | https://github.com/lavenderdotpet/LibreQuake.git | `4d2da523331f00211c97c90dc5af8672a2967618` |
+
+## Reproducing the binaries
+
+From a checkout of this repository, on Linux, with `python3`, `node`,
+`gcc` and an Emscripten SDK installed:
+
+```sh
+scripts/fetch_third_party.sh          # the revisions above
+
+scripts/build_fte_web.sh             # -> web/ftewebgl.{html,js,wasm}
+scripts/build_fte_server.sh          # -> build/fteqw-sv
+scripts/build_progs.sh               # -> web/id1/{progs,qwprogs}.dat
+scripts/build_models_wad.sh          # -> web/id1/models.pak
+scripts/build_sounds.py              # -> web/id1/sounds.pak (Ogg)
+scripts/build_maps.sh                # -> web/id1/our.wad, maps/forts.bsp (the alt maps go to tests/fixtures/maps/, 0479)
+scripts/precompress_web.sh           # -> a .gz sibling per content file; the servers serve these, so the download row measures gzipped bytes
+
+node tools/serve.js --port 8200 --root web
+```
+All of these are required rather than cosmetic:
+
+```sh
+# scripts/build_fte_web.sh
+WEB_EXTRA_LDFLAGS="-sEXPORTED_RUNTIME_METHODS=addRunDependency,removeRunDependency \
+                  -sEXPORTED_FUNCTIONS=_main,_malloc,_free"
+make gl-rel FTE_TARGET=web CC=emcc LDFLAGS="$WEB_EXTRA_LDFLAGS"
+```
+
+- `addRunDependency` / `removeRunDependency`: FTE's web glue
+  (`engine/web/prejs.js`) calls them in its `Module['files']` loaders.
+  Emscripten 3.1.58 and later only emit them when something requests
+  them, and `--pre-js` code does not count as a request, so without
+  this every file fetch throws at startup.
+- `_malloc` / `_free`: FTE's clipboard code and the Emscripten OpenAL
+  shim call them, so playing any sound throws
+  `ReferenceError: _free is not defined`. `EXPORTED_RUNTIME_METHODS`
+  rejects them, so they go in `EXPORTED_FUNCTIONS`.
+- `_main`: must be listed explicitly. FTE's Makefile sets no
+  `EXPORTED_FUNCTIONS`, so emcc's default applies, and that default is
+  exactly `[_main]`, the program entry point. `EXPORTED_FUNCTIONS`
+  *replaces* the list rather than extending it, so omitting `_main`
+  removed the only root keeping the engine alive and the linker
+  dead-stripped nearly everything: a 5.8 MB wasm came out at 9225 bytes
+  with exit status 0.
+
+FTE's Makefile never assigns `LDFLAGS` and `gl-tmp` forwards it onto the
+link, which is why the flags are passed that way rather than by patching
+the vendored tree.
+
+The build uses `gl-rel` rather than `web-rel`, because `web-rel` ends
+with `gzip -kf` on its own output and `gzip -kf X` rewrites `X` as it
+compresses -- the engine came out truncated, silently. The build
+verifies every artefact with `zcat X.gz | cmp - X`.
+
+The remaining Emscripten settings come from FTE's own Makefile
+(`engine/Makefile`, the `FTE_TARGET=web` block) and are unchanged.
+(`engine/Makefile`, the `FTE_TARGET=web` block) and are unchanged.
+
+The QuakeC is compiled with `fteqcc`, built from the same FTEQW revision,
+using LibreQuake's own source list and options:
+
+```sh
+cd third_party/LibreQuake/qcsrc
+../../fteqw/engine/release/fteqcc progs.src -D__LIBREQUAKE__ -O2 -o progs.dat
+../../fteqw/engine/release/fteqcc progs.src -D__LIBREQUAKE__ -D__QW__ -O2 -o qwprogs.dat
+```
+
+`scripts/build_progs.sh` does exactly this.
+
+## This project's own source
+
+| Path | What |
+|---|---|
+| `scripts/` | every build and pack step, plus the server launcher |
+| `maps/corridor.map` | our map source (generated by `scripts/gen_map.py`) |
+| `game/` | our QuakeC, from M4 onwards |
+| `tests/` | the test suite, including the headless-browser harness |
+
+The build scripts are the authoritative source for how each artefact was
+produced; nothing under `web/` is edited by hand except `index.html`,
+whose content list is generated by `scripts/gen_manifest.py`.
+
+<!-- END GENERATED -->
