@@ -3,6 +3,11 @@
 # @SITE_DOMAINS@, @MAP@).
 # After this, the VM keeps itself current: every 5 minutes it checks GitHub and
 # rebuilds only when there is a new commit (game-update.timer).
+# 2 GB of swap: the B1s has under 1 GB of memory, and compiling the game
+# server in the image build can run out of it.
+swap:
+  filename: /swapfile
+  size: 2147483648
 package_update: true
 package_upgrade: true
 packages: [docker.io, git, caddy, unattended-upgrades, openssl]
