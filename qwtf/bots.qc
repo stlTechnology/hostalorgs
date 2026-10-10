@@ -93,6 +93,8 @@ entity QWTF_nav2;                 // red:   red stand -> blue key
 entity QWTF_nav3;                 // blue:  spawn room -> red key
 entity QWTF_nav4;                 // blue:  red key -> blue stand, carrying
 entity QWTF_nav5;                 // blue:  blue stand -> red key
+entity QWTF_nav6, QWTF_nav7, QWTF_nav8;     // red guard:  spawn->key, key->stand, stand->key
+entity QWTF_nav9, QWTF_nav10, QWTF_nav11;   // blue guard: spawn->key, key->stand, stand->key
 
 entity QWTF_navb_head;            // the chain under construction
 entity QWTF_navb_tail;
@@ -177,6 +179,12 @@ void(vector v) QWTF_route_end =
         QWTF_nav4 = h;
     else if (QWTF_navb_id == 5)
         QWTF_nav5 = h;
+    else if (QWTF_navb_id == 6) QWTF_nav6 = h;
+    else if (QWTF_navb_id == 7) QWTF_nav7 = h;
+    else if (QWTF_navb_id == 8) QWTF_nav8 = h;
+    else if (QWTF_navb_id == 9) QWTF_nav9 = h;
+    else if (QWTF_navb_id == 10) QWTF_nav10 = h;
+    else if (QWTF_navb_id == 11) QWTF_nav11 = h;
     QWTF_navb_head = world;
     QWTF_navb_tail = world;
 };
@@ -195,6 +203,12 @@ entity(float id) QWTF_route_of =
         return QWTF_nav4;
     if (id == 5)
         return QWTF_nav5;
+    if (id == 6) return QWTF_nav6;
+    if (id == 7) return QWTF_nav7;
+    if (id == 8) return QWTF_nav8;
+    if (id == 9) return QWTF_nav9;
+    if (id == 10) return QWTF_nav10;
+    if (id == 11) return QWTF_nav11;
     return world;
 };
 
@@ -208,6 +222,44 @@ void() QWTF_bot_pickroute =
     local float da, db;
 
     self.qwtf_chase = world;
+
+    // DEFEND (qwtf_bot_skill 0, the default; owner, 2026-10-10: "We can leave
+    // the bots as defence"). Patrol the own fort: spawn -> own key, then key ->
+    // own turn-in and back, forever. Walking over the own key when it lies
+    // dropped returns it (ctf.qc's defender touch), so a dropped own key is
+    // chased; the enemy key never is. qwtf_bot_skill 1 is the old attacker.
+    if (cvar("qwtf_bot_skill") < 1)
+    {
+        local float base;
+        local entity own;
+        base = 6;
+        if (self.qwtf_team == QWTF_TEAM_BLUE)
+            base = 9;
+        own = QWTF_key_of_team(self.qwtf_team);
+        if (own != world && own.qwtf_state == QWTF_KEY_DROPPED)
+        {
+            self.qwtf_navroute = -1;
+            self.qwtf_nav = world;
+            self.qwtf_chase = own;
+            return;
+        }
+        // Where am I? Near the own key: go up to the turn-in. Near the turn-in:
+        // go down to the key. Anywhere else (a fresh spawn): spawn -> key.
+        mine = QWTF_route_of(base + 1);          // starts at the key
+        alt = QWTF_route_of(base + 2);           // starts at the turn-in
+        d = mine.origin - self.origin;
+        da = vlen(d);
+        d = alt.origin - self.origin;
+        db = vlen(d);
+        if (mine != world && da < 160)
+            self.qwtf_navroute = base + 1;
+        else if (alt != world && db < 160)
+            self.qwtf_navroute = base + 2;
+        else
+            self.qwtf_navroute = base;
+        self.qwtf_nav = QWTF_route_of(self.qwtf_navroute);
+        return;
+    }
 
     if (self.qwtf_carry)
     {

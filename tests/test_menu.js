@@ -564,16 +564,29 @@ async function lobbyMenuChecks(ok, bad) {
     if (!/runaway loop/.test(fs.readFileSync(LOG, 'utf8'))) ok('the mouse wheel in the lobby does not crash the server');
     else bad('the mouse wheel in the lobby crashed the server', 'runaway loop error in the log');
 
-    /* A CLASS click alone gets you in: with no team yet the menu joins one
-     * for you (owner: "i selected medic, it didn't return to the game"). */
-    await client.eval('window.QWTF_MENU.do("cls_soldier")');
+    /* Owner, 2026-10-10: "auto a user selections in the panel when they
+     * start, and show the defaulted or auto selections obviously in the
+     * menu". On join, Auto and Soldier are highlighted and the line says so;
+     * Enter (a real key event) joins with them. */
+    const pressed = await client.eval(`[...document.querySelectorAll('#qwtf-menu button[aria-pressed="true"]')]
+      .map(b => b.getAttribute('data-qwtf-action')).sort().join(',')`);
+    if (pressed === 'cls_soldier,team_auto') ok('on join, Auto team and Soldier are pre-selected and highlighted');
+    else bad('the defaults are not highlighted on join', JSON.stringify(pressed));
+    const joinAs = await client.eval(`(document.querySelector('[data-qwtf-joinas]')||{}).textContent||''`);
+    if (/You will join: Auto team, Soldier/.test(joinAs)) ok('the menu says what you will join as: ' + joinAs.trim());
+    else bad('the menu does not say what you will join as', JSON.stringify(joinAs));
+    await client.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: 'Enter', code: 'Enter',
+      windowsVirtualKeyCode: 13, nativeVirtualKeyCode: 13 });
+    await sleep(200);
+    await client.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter',
+      windowsVirtualKeyCode: 13, nativeVirtualKeyCode: 13 });
     let closed = false;
     for (let i = 0; i < 40 && !closed; i++) {
       await sleep(500);
       try { closed = !(await client.eval('window.QWTF_MENU.isOpen()')); } catch (e) {}
     }
     const spawned = /QWTF_EVENT lobby_spawn alpha/.test(fs.readFileSync(LOG, 'utf8'));
-    if (closed && spawned) ok('one class click closed the overlay and spawned alpha (team joined automatically)');
+    if (closed && spawned) ok('Enter joined with the defaults: the overlay closed and the server spawned alpha');
     else bad('the overlay did not close after both picks',
       `closed=${closed} lobby_spawn=${spawned}`);
     await client.screenshot(path.join(SHOTS, '05-lobby-closed.png'));

@@ -1,5 +1,7 @@
 #cloud-config
 # First boot of the game VM (deploy/azure/setup.sh fills @REPO_URL@, @SITES@, @MAP@).
+# After this, the VM keeps itself current: every 5 minutes it checks GitHub and
+# rebuilds only when there is a new commit (game-update.timer).
 package_update: true
 package_upgrade: true
 packages: [docker.io, git, caddy, unattended-upgrades, openssl]
@@ -10,35 +12,67 @@ write_files:
     content: |
       Unattended-Upgrade::Automatic-Reboot "true";
       Unattended-Upgrade::Automatic-Reboot-Time "04:00";
-  # HTTPS in front of the gate; Caddy gets and renews the certificate itself and
-  # passes the game's WebSocket through unchanged.
+  # HTTPS in front of the gate; Caddy gets and renews the certificates itself
+  # and passes the game's WebSocket through unchanged.
   - path: /etc/caddy/Caddyfile
     content: |
       @SITES@ {
         encode gzip
         reverse_proxy 127.0.0.1:8080
       }
-  # Pull the latest commit, rebuild the image, restart the container.
+  # Pull the latest commit; rebuild and restart only if it changed (or if the
+  # container is not running). FORCE=1 rebuilds anyway.
   - path: /opt/game/update.sh
     permissions: '0755'
     content: |
       #!/usr/bin/env bash
       set -euo pipefail
+      exec 9>/opt/game/update.lock; flock -n 9 || exit 0
       cd /opt/game/src
-      git fetch --depth 1 origin && git reset --hard origin/HEAD
-      docker build --build-arg QWTF_SHA="$(git rev-parse --short HEAD)" -t game:latest .
+      git fetch -q --depth 1 origin
+      new="$(git rev-parse --short FETCH_HEAD)"
+      have="$(cat /opt/game/deployed 2>/dev/null || true)"
+      running="$(docker inspect -f '{{.State.Running}}' game 2>/dev/null || echo false)"
+      if [ "$new" = "$have" ] && [ "$running" = true ] && [ "${FORCE:-0}" != 1 ]; then exit 0; fi
+      echo "$(date -Is) deploying $new (was ${have:-none})"
+      git reset -q --hard FETCH_HEAD
+      docker build -q --build-arg QWTF_SHA="$new" -t game:"$new" .
       docker rm -f game 2>/dev/null || true
       docker run -d --name game --restart unless-stopped \
         -p 127.0.0.1:8080:8080 \
         -e GATE_SECRET="$(cat /opt/game/gate.secret)" -e QWTF_MAP=@MAP@ \
+        -e QWTF_SERVER_ARGS="+set qwtf_bots 1" \
         --cap-drop ALL --security-opt no-new-privileges \
         --memory 700m --pids-limit 256 \
-        game:latest
-      docker image prune -f >/dev/null
+        game:"$new"
+      echo "$new" > /opt/game/deployed
+      docker image prune -af --filter "until=24h" >/dev/null || true
+      echo "$(date -Is) deployed $new"
+  - path: /etc/systemd/system/game-update.service
+    content: |
+      [Unit]
+      Description=Pull and deploy the latest game commit
+      After=docker.service network-online.target
+      [Service]
+      Type=oneshot
+      ExecStart=/opt/game/update.sh
+      StandardOutput=append:/var/log/game-update.log
+      StandardError=append:/var/log/game-update.log
+  - path: /etc/systemd/system/game-update.timer
+    content: |
+      [Unit]
+      Description=Check GitHub for a new game commit every 5 minutes
+      [Timer]
+      OnBootSec=2min
+      OnUnitActiveSec=5min
+      [Install]
+      WantedBy=timers.target
 
 runcmd:
   - [sh, -c, 'umask 077 && openssl rand -hex 32 > /opt/game/gate.secret']
   - [git, clone, --depth, '1', '@REPO_URL@', /opt/game/src]
   - [systemctl, enable, --now, docker]
-  - [/opt/game/update.sh]
+  - [sh, -c, '/opt/game/update.sh >> /var/log/game-update.log 2>&1']
   - [systemctl, restart, caddy]
+  - [systemctl, daemon-reload]
+  - [systemctl, enable, --now, game-update.timer]

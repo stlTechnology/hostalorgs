@@ -52,8 +52,11 @@ export GATE_ROOT
 [ -f "$GATE_ROOT/id1/qwprogs.dat" ] || {
   echo "FATAL: GATE_ROOT=$GATE_ROOT has no id1/qwprogs.dat (the game content)" >&2; exit 1; }
 
+# QWTF_SERVER_ARGS: extra engine settings, e.g. "+set qwtf_bots 1" for the
+# defender bots (word-split on purpose: each +set is its own arguments).
+# shellcheck disable=SC2086
 bash scripts/run_server.sh --port "$FTE_PORT" --host 127.0.0.1 \
-     --gamedir "$GAMEDIR" --map "$QWTF_MAP" &
+     --gamedir "$GAMEDIR" --map "$QWTF_MAP" ${QWTF_SERVER_ARGS:-} &
 SV_PID=$!
 
 # The gate proxies WebSocket upgrades to the game server's TCP listener, so

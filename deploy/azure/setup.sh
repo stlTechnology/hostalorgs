@@ -21,9 +21,9 @@
 # everything): VM, disk, public IP with DNS name $NAME.$LOCATION.cloudapp.azure.com,
 # network security group (80/443 open, 22 from SSH_FROM only), a monthly budget.
 #
-# Redeploy a new commit later, without SSH:
+# The VM deploys new commits by itself (checks GitHub every 5 min). To force it now:
 #   az vm run-command invoke -g $NAME-rg -n $NAME-vm --command-id RunShellScript \
-#     --scripts "/opt/game/update.sh"
+#     --scripts "FORCE=1 /opt/game/update.sh"
 set -euo pipefail
 : "${REPO_URL:?set REPO_URL=https://github.com/<you>/<repo>.git}"
 NAME="${NAME:-hostalorgs}"; LOCATION="${LOCATION:-eastus}"; SIZE="${SIZE:-Standard_B1s}"

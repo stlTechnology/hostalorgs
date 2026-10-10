@@ -54,6 +54,9 @@
     team: null,           /* null = server decides */
     cls: null,            /* null = server decides */
     lobby: { team: 0, cls: 0 },  /* the server's own account: QWTF_YOU lines */
+    /* What the lobby will join as. Pre-selected so nobody starts without a team
+     * or class (owner, 2026-10-10): Auto team, Soldier. */
+    sel: { team: 'team_auto', cls: 'cls_soldier' },
     who: [],              /* the last lobby list: { name, team } */
     autoOpened: false,    /* the join auto-open has run for this lobby stay */
   };
@@ -75,6 +78,7 @@
    * commands (reconnect, disconnect) and cvar settings stay bare. */
   const ACTIONS = {
     resume:    { label: 'Resume',     command: null },
+    join:      { label: 'Join game',  command: null },
     team_red:  { label: 'Red team',   command: 'cmd qwtf_setteam red' },
     team_blue: { label: 'Blue team',  command: 'cmd qwtf_setteam blue' },
     team_auto: { label: 'Auto',       command: 'cmd qwtf_setteam auto' },
@@ -248,6 +252,7 @@ function flushPending() {
     const you = YOU_RE.exec(line);
     if (you) {
       state.lobby = { team: Math.round(Number(you[1])), cls: Math.round(Number(you[2])) };
+      try { api.renderSelection(); } catch (e) { /* not built yet */ }
       try { if (window.QWTF_HELP) window.QWTF_HELP.setClass(state.lobby.team, state.lobby.cls); }
       catch (e) { /* the help panel is optional */ }
       const done = state.lobby.team !== 0 && state.lobby.cls !== 0;
@@ -331,9 +336,9 @@ function flushPending() {
     document.head.appendChild(style);
 
     const root = el('div', { id: 'qwtf-menu', role: 'dialog', 'aria-modal': 'true',
-                            'aria-label': 'QWTF menu' });
+                            'aria-label': 'Hostalorgs menu' });
     const panel = el('div', { class: 'qwtf-panel' });
-    panel.appendChild(el('h1', null, 'QWTF'));
+    panel.appendChild(el('h1', null, 'Hostalorgs'));
 
     function row(labelText) {
       const r = el('div', { class: 'qwtf-row' });
@@ -345,6 +350,7 @@ function flushPending() {
       const a = ACTIONS[actionName];
       const b = el('button', { type: 'button', 'data-qwtf-action': actionName }, a.label);
       b.addEventListener('click', () => {
+        if (api.choose(actionName)) return;      /* a lobby selection or the join */
         sendReliable(a.command);
         if (actionName === 'resume') api.close();
         /* Settings hands over to the engine's own options menu, which draws
@@ -356,7 +362,10 @@ function flushPending() {
     }
 
     const resumeRow = row(null);
+    resumeRow.appendChild(button('join'));
     resumeRow.appendChild(button('resume'));
+    resumeRow.appendChild(el('span', { class: 'qwtf-label', style: 'width:auto;margin-left:8px;',
+                                       'data-qwtf-joinas': '' }, ''));
 
     panel.appendChild(el('div', { class: 'qwtf-sep' }));
     const teamRow = row('Team');
@@ -448,6 +457,7 @@ function flushPending() {
       document.documentElement.style.cursor = 'default';
       api.refresh();
       api.renderWho();
+      api.renderSelection();
       /* The lobby list lives on the server; ask for it now and every 2 s
        * while the overlay is open, and never leave the interval behind.
        * state.who is cleared per request: each answer is a whole list, and
@@ -502,8 +512,61 @@ function flushPending() {
       return `${cvar} = ${fmt(value)}`;
     },
 
+    inLobby() { return state.lobby.team === 0 || state.lobby.cls === 0; },
+
+    /* The lobby's selection rules. In the lobby a team click only selects (it
+     * is highlighted, and Auto is selected to begin with); a class click selects
+     * and joins at once; Join (or Enter) joins with what is selected. Returns the
+     * description of what it did, or '' when the click is an ordinary in-game
+     * action for the caller to send. */
+    choose(actionName) {
+      if (actionName === 'join') return api.join();
+      if (!api.inLobby()) return '';
+      if (actionName.startsWith('team_')) {
+        state.sel.team = actionName; api.renderSelection(); return 'selected ' + actionName;
+      }
+      if (actionName.startsWith('cls_')) { state.sel.cls = actionName; return api.join(); }
+      return '';
+    },
+
+    join() {
+      sendReliable(ACTIONS[state.sel.team].command);
+      sendReliable(ACTIONS[state.sel.cls].command);
+      api.renderSelection();
+      return 'join ' + state.sel.team + ' ' + state.sel.cls;
+    },
+
+    /* Highlight what is chosen: in the lobby the selection, in the game the
+     * server's own account of the player's team and class. */
+    renderSelection() {
+      const r = api.root;
+      if (!r) return;
+      const CLS = { 1: 'cls_scout', 2: 'cls_sniper', 3: 'cls_soldier', 4: 'cls_demo',
+                    5: 'cls_heavy', 6: 'cls_medic' };
+      const lobby = api.inLobby();
+      const team = lobby ? state.sel.team
+                         : (state.lobby.team === 1 ? 'team_red' : state.lobby.team === 2 ? 'team_blue' : '');
+      const cls = lobby ? state.sel.cls : (CLS[state.lobby.cls] || '');
+      for (const b of r.querySelectorAll('button[data-qwtf-action]')) {
+        const n = b.getAttribute('data-qwtf-action');
+        if (n.startsWith('team_') || n.startsWith('cls_'))
+          b.setAttribute('aria-pressed', (n === team || n === cls) ? 'true' : 'false');
+        if (n === 'join') b.hidden = !lobby;
+        if (n === 'resume') b.hidden = lobby;
+      }
+      const line = r.querySelector('[data-qwtf-joinas]');
+      if (line) {
+        const tl = team ? ACTIONS[team].label.replace(' team', '') : '?';
+        const cl = cls ? ACTIONS[cls].label : '?';
+        line.textContent = lobby ? `You will join: ${tl} team, ${cl}  (Enter to join)`
+                                 : `Playing: ${tl} team, ${cl}`;
+      }
+    },
+
     do(actionName) {
       if (!(actionName in ACTIONS)) throw new Error('no such action: ' + actionName);
+      const chosen = api.choose(actionName);
+      if (chosen) return chosen;
       const a = ACTIONS[actionName];
       sendReliable(a.command);
       if (actionName === 'resume') api.close();
@@ -538,14 +601,22 @@ function flushPending() {
       installConsoleHook();
       /* window capture: runs before FTE's document capture listener, so ESC can
        * be taken before the engine ever sees it. See the note at the top. */
-      window.addEventListener('keydown', (e) => {
+      const onKey = (e) => {
+        /* Enter in the lobby joins with the highlighted team and class. */
+        if ((e.key === 'Enter' || e.code === 'Enter') && api.isOpen() && api.inLobby()) {
+          e.stopPropagation();
+          e.preventDefault();
+          api.join();
+          return;
+        }
         if (e.key !== 'Escape' && e.code !== 'Escape') return;
         /* Always swallow, open or closed: otherwise ESC closes our menu and then
          * opens FTE's on the same keypress. */
         e.stopPropagation();
         e.preventDefault();
         api.toggle();
-      }, true);
+      };
+      window.addEventListener('keydown', onKey, true);
       return true;
     },
   };
