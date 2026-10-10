@@ -473,8 +473,12 @@ float() QWTF_bot_fight =
         e = find(world, classname, "player");
         while (e)
         {
+            // An ENEMY: on a team (a lobby waiter has team 0 and no body, and
+            // was shot at and "followed" -- owner, 2026-10-10), not ours, and
+            // able to take damage.
             if (e != self && e.health > 0 && e.deadflag == DEAD_NO
-                && e.qwtf_team != self.qwtf_team)
+                && e.qwtf_team != 0 && e.qwtf_team != self.qwtf_team
+                && e.takedamage != DAMAGE_NO)
             {
                 d = e.origin - self.origin;
                 dd = d_x * d_x + d_y * d_y;
