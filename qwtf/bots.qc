@@ -127,6 +127,8 @@ float QWTF_BOT_LOST = 0.7;        // seconds a target stays aimed at unseen
 float QWTF_BOT_SCAN = 0.15;       // seconds between enemy scans
 float QWTF_BOT_CHECK = 1.2;       // seconds between stuck checks
 float QWTF_BOT_AMMO = 25;         // the shotgun's full load
+float QWTF_BOT_RESPAWN = 5;       // seconds a dead bot waits before respawning
+.float qwtf_dead_at;              // when this bot died (0 = alive)
 
 void(entity e, string what) QWTF_event_who;   // ctf.qc's, defined earlier
 
@@ -236,7 +238,23 @@ void() QWTF_bot_pickroute =
         if (self.qwtf_team == QWTF_TEAM_BLUE)
             base = 9;
         own = QWTF_key_of_team(self.qwtf_team);
-        if (own != world && own.qwtf_state == QWTF_KEY_DROPPED)
+        // A defender returns its own dropped key, but only on its own half:
+        // chasing it into the enemy fort put both bots in one fort (owner,
+        // 2026-10-10). Mid-x is halfway between the two keys' home spots.
+        local entity rk, bk;
+        local float midx, ownside;
+        rk = QWTF_key_of_team(QWTF_TEAM_RED);
+        bk = QWTF_key_of_team(QWTF_TEAM_BLUE);
+        ownside = 1;
+        if (own != world && rk != world && bk != world)
+        {
+            midx = (rk.qwtf_homevec_x + bk.qwtf_homevec_x) / 2;
+            if (self.qwtf_team == QWTF_TEAM_RED)
+                ownside = own.origin_x < midx;
+            else
+                ownside = own.origin_x > midx;
+        }
+        if (own != world && own.qwtf_state == QWTF_KEY_DROPPED && ownside)
         {
             self.qwtf_navroute = -1;
             self.qwtf_nav = world;
@@ -547,7 +565,10 @@ void() QWTF_bot_place =
     bk = QWTF_key_of_team(QWTF_TEAM_BLUE);
     if (rk == world || bk == world)
         return;                       // not a CTF map; leave the spawn alone
-    mid = (rk.origin_x + bk.origin_x) * 0.5;
+    // The keys' HOME spots, not where they are now: a taken key is hidden at
+    // the world origin (x 0), which moved "mid" into the red base and spawned
+    // the blue bot there (owner playtest 2026-10-10).
+    mid = (rk.qwtf_homevec_x + bk.qwtf_homevec_x) * 0.5;
 
     found = 0;
     best = world;
@@ -604,13 +625,28 @@ void() QWTF_bot_brain =
         // QW respawns on a button once the corpse is READY; the wait between
         // DEAD and READY wants the button UP, so release during DEAD and
         // click at RESPAWNABLE. The 10 s anti-stall would respawn anyway.
+        // Owner, 2026-10-10: "they spawn too fast". Wait QWTF_BOT_RESPAWN s.
         self.movement = '0 0 0';
-        if (self.deadflag == DEAD_RESPAWNABLE)
+        if (!self.qwtf_dead_at)
+            self.qwtf_dead_at = time;
+        if (self.deadflag == DEAD_RESPAWNABLE && time >= self.qwtf_dead_at + QWTF_BOT_RESPAWN)
             self.button0 = 1;
         else
             self.button0 = 0;
         self.button2 = 0;
         return;
+    }
+    self.qwtf_dead_at = 0;
+
+    // The bots' aim and restock are written for the hitscan super shotgun.
+    // Every class now spawns on its signature weapon (a Soldier on rockets),
+    // and a bot firing rockets at close range blew itself up (owner,
+    // 2026-10-10: "they shoot at their feet and die"). Checked every frame,
+    // because the class apply runs after the bot's own spawn hook.
+    if (self.weapon != IT_SUPER_SHOTGUN && (self.items & IT_SUPER_SHOTGUN))
+    {
+        self.weapon = IT_SUPER_SHOTGUN;
+        W_SetCurrentAmmo();
     }
 
     self.button0 = 0;
@@ -814,7 +850,9 @@ wrap void() PutClientInServer =
 {
     prior();
     if (self.qwtf_isbot)
+    {
         QWTF_bot_place();
+    }
 };
 
 wrap void() PlayerPreThink =

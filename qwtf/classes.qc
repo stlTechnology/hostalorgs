@@ -1192,7 +1192,8 @@ void(string name) QWTF_cmd_setclass =
 
     if (self.qwtf_class_chosen && self.qwtf_class == id)
     {
-        sprint(self, PRINT_HIGH, "you are already that class\n");
+        // Silent: the menu re-sends its picks to make sure they arrive, and
+        // every repeat printed this line over the screen (owner, 2026-10-10).
         return;
     }
 
@@ -1268,7 +1269,7 @@ void(string side) QWTF_cmd_setteam =
 
     if (self.qwtf_team != 0 && want == self.qwtf_team)
     {
-        sprint(self, PRINT_HIGH, "you are already on that team\n");
+        // Silent, for the same reason as the class repeat above.
         return;
     }
 

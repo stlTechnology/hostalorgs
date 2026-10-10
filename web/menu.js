@@ -514,8 +514,8 @@ function flushPending() {
 
     inLobby() { return state.lobby.team === 0 || state.lobby.cls === 0; },
 
-    /* The lobby's selection rules. In the lobby a team click only selects (it
-     * is highlighted, and Auto is selected to begin with); a class click selects
+    /* The lobby's selection rules. In the lobby a team click selects (it is
+     * highlighted, Auto to begin with) and is sent; a class click selects
      * and joins at once; Join (or Enter) joins with what is selected. Returns the
      * description of what it did, or '' when the click is an ordinary in-game
      * action for the caller to send. */
@@ -523,7 +523,9 @@ function flushPending() {
       if (actionName === 'join') return api.join();
       if (!api.inLobby()) return '';
       if (actionName.startsWith('team_')) {
-        state.sel.team = actionName; api.renderSelection(); return 'selected ' + actionName;
+        /* Highlight it AND let the caller send it: the server keeps the player
+         * waiting until a class arrives, and the pick is on record at once. */
+        state.sel.team = actionName; api.renderSelection(); return '';
       }
       if (actionName.startsWith('cls_')) { state.sel.cls = actionName; return api.join(); }
       return '';
