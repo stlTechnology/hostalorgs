@@ -834,6 +834,8 @@ void(entity hit) QWTF_medkit_heal =
     QWTF_event_who(hit, "medkit_heal");
 };
 
+void(entity victim, entity attacker) QWTF_axe_blow;   // defined below, with the axe's wrap
+
 void() QWTF_medkit_attack =
 {
     local vector eye, dest;
@@ -870,7 +872,7 @@ void() QWTF_medkit_attack =
     sound(hit, CHAN_WEAPON, "player/axhit1.wav", 1, ATTN_NORM);
     if (hit.qwtf_class != QWTF_CLASS_MEDIC)
         QWTF_infect(hit, self);
-    T_Damage(hit, self, self, 5);
+    QWTF_axe_blow(hit, self);             // the axe's 51% (see W_FireAxe's wrap)
     QWTF_event_who(hit, "medkit_hit");
 };
 
@@ -938,6 +940,44 @@ wrap void() W_Attack =
 //   22  launcher mode toggle (bound to V): bouncing grenades <-> sticky
 //       charges (demolitions only)
 //   23  detonate the sticky charges (bound to B)
+// THE AXE (owner, 2026-10-10: "a hit with an ax should be 51% of the health").
+// A hit on an enemy player takes 51% of that player's full health, past armour,
+// so two hits kill. The medic's medkit hit on an enemy uses the same blow (and
+// the virus follows). Teammates are never hurt (friendly fire is off), and a
+// hit on anything that is not a player keeps the stock 20.
+float QWTF_AXE_SHARE = 0.51;
+
+void(entity victim, entity attacker) QWTF_axe_blow =
+{
+    local float dmg, at;
+    dmg = ceil(victim.max_health * QWTF_AXE_SHARE);
+    if (dmg < 1)
+        dmg = 1;
+    victim.axhitme = 1;
+    victim.deathtype = "axe";
+    at = victim.armortype;
+    victim.armortype = 0;                 // past armour: this blow is to health
+    T_Damage(victim, attacker, attacker, dmg);
+    victim.armortype = at;
+};
+
+wrap void() W_FireAxe =
+{
+    local vector source;
+
+    makevectors(self.v_angle);
+    source = self.origin + '0 0 22';
+    traceline(source, source + v_forward * 64, FALSE, self);
+    if (trace_fraction < 1.0 && trace_ent.classname == "player" && trace_ent.takedamage &&
+        trace_ent.qwtf_team != self.qwtf_team)
+    {
+        SpawnBlood(trace_endpos - v_forward * 4, '0 0 0', 20);
+        QWTF_axe_blow(trace_ent, self);
+        return;
+    }
+    prior();
+};
+
 // BACKPACKS keep you in your class (owner, 2026-10-10: "the backpacks are
 // changing the class"). The stock pickup hands over every weapon in the pack
 // and switches to the best one, so a Medic who walked over a Soldier's pack

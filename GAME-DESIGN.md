@@ -125,8 +125,9 @@ Balance targets for play-testing:
 - A Scout outruns everyone carrying the flag and dies fast if caught.
 - A Heavy holding a choke point needs two attackers, or a Demolitions
   player, to break it.
-- A charged Sniper shot kills a Scout or Medic, but not a full-armour
-  Soldier or Heavy.
+- A fully charged Sniper shot kills any class, even a full-armour Soldier or
+  Heavy, from anywhere on the map (owner, 2026-10-10: four times the damage and
+  range across the map).
 - A Medic plus a Soldier beats two Soldiers.
 - Demolitions sticky charges are visible and can be shot.
 

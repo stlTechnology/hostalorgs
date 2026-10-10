@@ -9,7 +9,7 @@
  *
  * THE GUNS (the brief, .lane/BRIEF.md):
  *   charged rifle   hold fire to charge; the shot fires ON RELEASE. Damage
- *                   20 + 30/s of charge, capped at 110 (3 s). fov 40 while
+ *                   80 + 120/s of charge, capped at 440 (3 s). fov 40 while
  *                   charging, 90 back on release. 1.5 s between shots, 1 shell
  *                   per shot. Event: QWTF_EVENT sniper_shot <name> charge=<s>
  *                   dmg=<n>.
@@ -17,10 +17,10 @@
  *                   1 nail a shot, small spread. Event: sniper_auto.
  *
  * THE DONE-WHEN this file proves (the brief):
- *   - a 0-charge shot does 20 to 50 damage;
- *   - a full charge does 110;
- *   - a full charge kills a fresh Scout (75 health, 50 light armour) but NOT a
- *     fresh Soldier;
+ *   - a 0-charge shot does 80 to 140 damage (x4, owner 2026-10-10);
+ *   - a full charge does 440;
+ *   - a full charge kills a fresh Scout (75 health, 50 light armour) and a
+ *     fresh Soldier too;
  *   - 10 auto-rifle hits do 70 to 90 damage;
  *   - nails go down by 1 per shot.
  *
@@ -129,14 +129,16 @@ function staticChecks() {
         'the wraps call prior() -- classes.qc\'s medkit, sticky charges and stock guns are below them');
 
   const c = sniperConstants();
-  check(c.QWTF_SNIPER_BASE === 20,
+  check(c.QWTF_SNIPER_BASE === 80,
         'a zero-charge shot is worth ' + c.QWTF_SNIPER_BASE + ' (qwtf/sniper.qc)',
         'the brief: damage 20 + 30 per second');
-  check(c.QWTF_SNIPER_PER_SEC === 30,
+  check(c.QWTF_SNIPER_PER_SEC === 120,
         'the charge adds ' + c.QWTF_SNIPER_PER_SEC + ' damage a second');
   check(c.QWTF_SNIPER_CAP_TIME === 3, 'the cap is reached at ' + c.QWTF_SNIPER_CAP_TIME + ' s');
-  check(c.QWTF_SNIPER_BASE + c.QWTF_SNIPER_PER_SEC * c.QWTF_SNIPER_CAP_TIME === 110,
-        `the cap is ${c.QWTF_SNIPER_BASE} + ${c.QWTF_SNIPER_PER_SEC} * ${c.QWTF_SNIPER_CAP_TIME} = 110`);
+  check(c.QWTF_SNIPER_BASE + c.QWTF_SNIPER_PER_SEC * c.QWTF_SNIPER_CAP_TIME === 440,
+        `the cap is ${c.QWTF_SNIPER_BASE} + ${c.QWTF_SNIPER_PER_SEC} * ${c.QWTF_SNIPER_CAP_TIME} = 440`);
+  check(/traceline\(src, src \+ dir \* 8192, FALSE, self\)/.test(q),
+        'the rifle reaches 8192 units, across the whole map');
   check(c.QWTF_SNIPER_REFIRE === 1.5, '1.5 s between charged shots');
   check(c.QWTF_SNIPER_AUTO_RATE === 0.1, 'the auto-rifle fires every 0.1 s');
   check(/TraceAttack\(8, direction, "sniper_auto"\)|QWTF_sn_fire_hitscan\(8, "sniper_auto"/.test(q),
@@ -168,7 +170,7 @@ function staticChecks() {
   const design = fs.readFileSync(path.join(ROOT, 'GAME-DESIGN.md'), 'utf8');
   check(/Charged sniper rifle \(damage grows with hold time, zoom\), auto-rifle/.test(design),
         'GAME-DESIGN.md row 2 still asks for the charged rifle and the auto-rifle');
-  check(/A charged Sniper shot kills a Scout or Medic, but not a full-armour\s*\n\s*Soldier or Heavy/.test(design),
+  check(/A fully charged Sniper shot kills any class, even a full-armour Soldier or\s*\n\s*Heavy/.test(design),
         'and the balance target line is still the one this test proves');
 
   const build = fs.readFileSync(path.join(ROOT, 'scripts/build_progs.sh'), 'utf8');
@@ -674,16 +676,17 @@ async function liveChecks(progsDir, expectFailure) {
       'the charged shot hit bravo (QWTF_EVENT sniper_hit)');
     p1 = parseLog(afterN(server.text(), marks.kill1));
     const hit1 = p1.hits.find(h => h.victim === 'bravo' && h.dmg === shot1.dmg);
-    check(shot1 && Math.abs(shot1.charge - 3) < 0.6 && shot1.dmg === 110,
-          `a full charge is 110 damage (charge ${shot1 ? shot1.charge : '?'}, ` +
+    check(shot1 && Math.abs(shot1.charge - 3) < 0.6 && shot1.dmg === 440,
+          `a full charge is 440 damage (charge ${shot1 ? shot1.charge : '?'}, ` +
           `dmg ${shot1 ? shot1.dmg : '?'})`,
           shot1 ? JSON.stringify(p1.shots) : 'no shot line');
     /* Freshness is arithmetical, not taken on faith: a FRESH Scout is 75 hp /
-     * 50 light armour, light absorbs 0.3 (classes.qc's table), so a 110 shot
-     * must leave armour 50 - 33 = 17 and health 75 - 77 = -2. Any earlier
-     * damage on the victim shows up right here. */
-    check(hit1 && hit1.health === -2 && hit1.armour === 17,
-          `and it kills the fresh Scout (75/50 -> health -2, armour 17; ` +
+     * 50 light armour, light absorbs 0.3 (classes.qc's table): a 440 shot
+     * would put ceil(132) on armour, capped at the 50 there is, so armour 0 and
+     * health 75 - 390, which the game floors at -99 for a dead player
+     * (combat.qc: "don't let sbar look bad"). */
+    check(hit1 && hit1.health === -99 && hit1.armour === 0,
+          `and it kills the fresh Scout (75/50 -> health -99, armour 0; ` +
           `hit: ${hit1 ? 'health ' + hit1.health + ', armour ' + hit1.armour : 'none'})`,
           hit1 ? JSON.stringify(hit1) : 'no hit line');
     check(shot1 && hit1 && hit1.dmg === shot1.dmg,
@@ -715,13 +718,13 @@ async function liveChecks(progsDir, expectFailure) {
     }
     const p2 = tapHit || parseLog(afterN(server.text(), marks.tap));
     const tapShot = p2.shots.find(s => s.charge <= 0.5);
-    const tapHits = p2.hits.filter(h => h.dmg >= 20 && h.dmg <= 50 && h.health > 0);
-    check(tapShot && tapShot.dmg >= 20 && tapShot.dmg <= 50,
-          `a 0-charge shot does 20 to 50 damage (charge ${tapShot ? tapShot.charge : '?'}, ` +
+    const tapHits = p2.hits.filter(h => h.dmg >= 80 && h.dmg <= 140);
+    check(tapShot && tapShot.dmg >= 80 && tapShot.dmg <= 140,
+          `a 0-charge shot does 80 to 140 damage (charge ${tapShot ? tapShot.charge : '?'}, ` +
           `dmg ${tapShot ? tapShot.dmg : '?'})`,
           tapShot ? JSON.stringify(p2.shots.slice(0, 3)) : 'no tap shot at all');
     check(tapShot && tapHits.length > 0,
-          `and it lands: the Scout takes it and lives (health ${tapHits[0] ? tapHits[0].health : '?'})`,
+          `and it lands on the Scout (health after: ${tapHits[0] ? tapHits[0].health : '?'})`,
           JSON.stringify(p2.hits));
 
     /* --- 3. the Soldier pick, applied AT ONCE now (2026-10-09: the old
@@ -737,7 +740,7 @@ async function liveChecks(progsDir, expectFailure) {
       const before = server.state().hits.length;
       await server.waitFor((st) => st.hits.length > before, 6000);
       const p = parseLog(afterN(server.text(), marks.kill2));
-      if (p.hits.some(h => h.dmg === 110 && h.health <= 0)) break;
+      if (p.hits.some(h => h.dmg === 440 && h.health <= 0)) break;
     }
     await server.waitFor(
       (st) => st.stats.some(s => s.who === 'bravo' && s.cls === 'soldier'), 25000,
@@ -747,7 +750,7 @@ async function liveChecks(progsDir, expectFailure) {
           'the fresh Soldier is on the wire (100 health, 200 combat armour)',
           sol ? JSON.stringify(sol) : 'no stats line');
 
-    /* --- 4. the full charge does NOT kill a fresh Soldier ----------------- */
+    /* --- 4. the full charge now kills even a fresh Soldier (x4 damage) ---- */
     mark('survive');
     let p4 = null;
     for (let i = 0; i < 8 && !p4; i++) {
@@ -755,18 +758,22 @@ async function liveChecks(progsDir, expectFailure) {
       const before = server.state().hits.length;
       await server.waitFor((st) => st.hits.length > before, 6000);
       const p = parseLog(afterN(server.text(), marks.survive));
-      if (p.hits.some(h => h.dmg === 110)) p4 = p;
+      if (p.hits.some(h => h.dmg === 440)) p4 = p;
     }
     const surv = p4 ? p4.hits[p4.hits.length - 1] : null;
-    check(surv && surv.dmg === 110 && surv.health > 0,
-          `the same 110 does NOT kill a fresh Soldier (health ${surv ? surv.health : '?'})`,
+    /* 100 / 200 combat (absorbs 0.6): ceil(264) on armour, capped at 200;
+     * health 100 - 240, floored at -99. */
+    check(surv && surv.dmg === 440 && surv.health === -99 && surv.armour === 0,
+          `a full charge kills a fresh Soldier too (health ${surv ? surv.health : '?'}, armour ${surv ? surv.armour : '?'})`,
           surv ? JSON.stringify(p4.hits) : 'no hit on the Soldier at all');
-    check(surv && surv.health >= 1 && surv.health <= 100 && surv.armour > 0,
-          `and the Soldier still has armour after it (${surv ? surv.armour : '?'} left, ` +
-          'combat absorbs most of a charged shot)',
-          surv ? JSON.stringify(surv) : '');
 
     /* --- 5. the auto-rifle ------------------------------------------------ */
+    /* The full charge killed the Soldier (x4 damage): wait for bravo's respawn
+     * (the 10 s anti-stall puts him back on the same spawn) before the burst. */
+    const nStats = server.state().stats.filter(st => st.who === 'bravo').length;
+    await server.waitFor((st) => st.stats.filter(x => x.who === 'bravo').length > nStats, 25000,
+      'bravo is back after the kill (a new class_stats line)');
+    await sleep(1500);
     await alpha.console('impulse 4');
     await sleep(2500);                   // past the charged rifle's refire window
     mark('auto');

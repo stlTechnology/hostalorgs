@@ -57,8 +57,8 @@
 // ---------------------------------------------------------------------------
 // The design's numbers, named at one place the way drown.qc names its own: the
 // test reads these out of the file rather than restating them.
-float QWTF_SNIPER_BASE = 20;        // damage at zero charge
-float QWTF_SNIPER_PER_SEC = 30;     // damage added per second held
+float QWTF_SNIPER_BASE = 80;        // damage at zero charge (x4, owner 2026-10-10)
+float QWTF_SNIPER_PER_SEC = 120;    // damage added per second held (x4)
 // The cap value is the arithmetic's own: BASE + PER_SEC * CAP_TIME =
 // 20 + 30*3 = 110, and the test asserts it against GAME-DESIGN.md's number.
 float QWTF_SNIPER_CAP_TIME = 3;     // seconds of hold that reaches the cap
@@ -120,7 +120,9 @@ void(float dmg, string dtype, vector src) QWTF_sn_fire_hitscan =
 
     makevectors(self.v_angle);
     dir = aim(self, 100000);
-    traceline(src, src + dir * 2048, FALSE, self);
+    // 8192: across the whole map (owner, 2026-10-10: "needs to hit from across
+    // the map"); the forts are about 3500 apart. Was 2048.
+    traceline(src, src + dir * 8192, FALSE, self);
     if (trace_fraction != 1.0)
     {
         ClearMultiDamage();
