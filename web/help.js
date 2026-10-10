@@ -94,7 +94,9 @@
     const c = CLASSES[cls];
     if (!c) { box.innerHTML = ''; return ''; }
     const colour = TEAM_COLOUR[team] || '#e6e6e6';
-    box.innerHTML = `<div class="qwtf-class" style="color:${colour}">${c.name.toUpperCase()}</div>` +
+    const teamName = team === 1 ? 'RED TEAM' : team === 2 ? 'BLUE TEAM' : '';
+    box.innerHTML = `<div class="qwtf-class" style="color:${colour}">${c.name.toUpperCase()}` +
+      (teamName ? ` &middot; ${teamName}` : '') + `</div>` +
       `<div class="qwtf-class-weapons">${c.weapons.map(w => `<div>${w}</div>`).join('')}</div>`;
     return c.name;
   }

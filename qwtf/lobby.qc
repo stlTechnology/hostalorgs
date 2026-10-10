@@ -214,6 +214,19 @@ wrap void() PutClientInServer =
         // Every spawn, not only the lobby's: the page's class header (web/help.js)
         // follows class changes through this line.
         QWTF_lobby_you(self);
+        // Team colours on the player model and the scoreboard (owner,
+        // 2026-10-10: a red player still showed blue/yellow). The bots set
+        // theirs in qwtf/bots.qc; humans had the engine default.
+        if (self.qwtf_team == QWTF_TEAM_RED)
+        {
+            forceinfokey(self, "topcolor", "4");
+            forceinfokey(self, "bottomcolor", "4");
+        }
+        else if (self.qwtf_team == QWTF_TEAM_BLUE)
+        {
+            forceinfokey(self, "topcolor", "13");
+            forceinfokey(self, "bottomcolor", "13");
+        }
     }
 };
 

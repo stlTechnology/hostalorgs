@@ -936,6 +936,57 @@ wrap void() W_Attack =
 //   22  launcher mode toggle (bound to V): bouncing grenades <-> sticky
 //       charges (demolitions only)
 //   23  detonate the sticky charges (bound to B)
+// BACKPACKS keep you in your class (owner, 2026-10-10: "the backpacks are
+// changing the class"). The stock pickup hands over every weapon in the pack
+// and switches to the best one, so a Medic who walked over a Soldier's pack
+// came out with rockets. After the stock pickup: weapons outside the class are
+// taken away again, ammo the class has no gun for goes back to what it was, and
+// a gun the pack switched to that the class does not carry goes back to the
+// class's own. A pack from the same class is a plain refill.
+wrap void() BackpackTouch =
+{
+    local entity p, was;
+    local float w, all, extra, sh, na, ro, ce;
+
+    p = other;
+    if (p.classname != "player" || !p.qwtf_class)
+    {
+        prior();
+        return;
+    }
+    w = QWTF_class_weapons(p.qwtf_class) | IT_AXE;
+    sh = p.ammo_shells;
+    na = p.ammo_nails;
+    ro = p.ammo_rockets;
+    ce = p.ammo_cells;
+
+    prior();                                 // the stock pickup; removes the pack
+
+    all = IT_SHOTGUN | IT_SUPER_SHOTGUN | IT_NAILGUN | IT_SUPER_NAILGUN |
+          IT_GRENADE_LAUNCHER | IT_ROCKET_LAUNCHER | IT_LIGHTNING;
+    extra = (p.items & all) - (p.items & all & w);
+    p.items = p.items - extra;
+    if (!(w & (IT_SHOTGUN | IT_SUPER_SHOTGUN)))
+        p.ammo_shells = sh;
+    if (!(w & (IT_NAILGUN | IT_SUPER_NAILGUN)))
+        p.ammo_nails = na;
+    if (!(w & (IT_GRENADE_LAUNCHER | IT_ROCKET_LAUNCHER)))
+        p.ammo_rockets = ro;
+    if (!(w & IT_LIGHTNING))
+        p.ammo_cells = ce;
+
+    was = self;
+    self = p;
+    if (!(self.items & self.weapon))
+    {
+        self.weapon = QWTF_class_start(self.qwtf_class);
+        if (!(self.items & self.weapon))
+            self.weapon = W_BestWeapon();
+    }
+    W_SetCurrentAmmo();
+    self = was;
+};
+
 // The stock weapon cycle loops until it finds a weapon the player holds, so a
 // player holding none (a lobby waiter, a body mid-respawn) spins forever and
 // the server dies with "runaway loop error". With nothing to cycle to, the
