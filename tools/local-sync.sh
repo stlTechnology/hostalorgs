@@ -8,6 +8,9 @@ ROOT=/home/adminuser/quake
 OWNER=adminuser
 STATE=/var/lib/hostalorgs-local/deployed
 exec 9>/run/hostalorgs-local-sync.lock; flock -n 9 || exit 0
+# install_service.sh runs git as root on adminuser's repo; allow that one
+# directory for this process only (no change to any git config file).
+export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=safe.directory GIT_CONFIG_VALUE_0="$ROOT"
 mkdir -p "$(dirname "$STATE")"
 sudo -u "$OWNER" git -C "$ROOT" fetch -q public main
 new="$(sudo -u "$OWNER" git -C "$ROOT" rev-parse --short public/main)"
