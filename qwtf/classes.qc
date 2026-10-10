@@ -810,6 +810,8 @@ void(entity victim, entity medic) QWTF_infect =
 {
     if (victim.qwtf_poison_until <= time)
         victim.qwtf_poison_next = time + 1;
+    if (victim.qwtf_poison_until <= time && !victim.qwtf_isbot)
+        centerprint(victim, "You are infected!\nGet a hit from your own Medic to cure it");
     victim.qwtf_poison_until = time + 100000;
     victim.qwtf_poison_from = medic;
     QWTF_event_who(victim, "virus_infected");
@@ -1100,8 +1102,14 @@ wrap void() PlayerPreThink =
         local entity near;
 
         self.qwtf_poison_next = time + 1;
-        // inflictor world: no knockback on a poison tick
-        T_Damage(self, world, self.qwtf_poison_from, QWTF_VIRUS_DAMAGE);
+        // The virus drains HEALTH, past armour (owner, 2026-10-10: "a steady
+        // slow drain on their health"): through T_Damage, a Soldier's armour
+        // took 3 of every 4 and the drain was invisible. The killing tick still
+        // goes through T_Damage, so the death and the frag are the medic's.
+        if (self.health > QWTF_VIRUS_DAMAGE)
+            self.health = self.health - QWTF_VIRUS_DAMAGE;
+        else
+            T_Damage(self, world, self.qwtf_poison_from, 1000);
         QWTF_event_who(self, "poison_tick");
 
         // The virus spreads to the carrier's own teammates standing next to
