@@ -165,6 +165,30 @@ def main(argv):
     blue_out_probe_path, _ = rt(blue_spawn_c, key_red)
     ramp_red = ramp_top(blue_out_probe_path)
 
+    # The guard routes. Blue's come from the router; red's are blue's MIRRORED
+    # about the keys' midpoint, because the router's rise rule can climb in
+    # mid-air (it judges a rise by the surface under the next column, not the
+    # mover's own height) and red's own spawn -> key route came out walking a
+    # level at z 160 that does not exist, then dropping through a wall: the red
+    # bot never reached its vault (owner playtest 2026-10-10). The forts are
+    # mirror images, so a walkable blue route mirrors to a walkable red one.
+    axis = key_red[0] + key_blue[0]
+    if abs(key_red[1] - key_blue[1]) > 1 or abs((stand_red[0] + stand_blue[0]) - axis) > 1:
+        raise SystemExit("FATAL: the map is not mirrored about the keys' midpoint; "
+                         "red guard routes cannot be blue's mirror")
+
+    def mirror(pts):
+        return [(axis - p[0], p[1], p[2]) for p in pts]
+
+    # The patrol is spawn -> own vault -> back to spawn. The router's climb
+    # from the vault to the roof turn-in is not walkable either (both bots got
+    # half way up the stairwell and fell back, at mirrored spots), so the roof
+    # is left out until the router's rise rule is fixed; "UP" walks blue's
+    # working spawn -> vault route backwards, and "DOWN" is that route again.
+    blue_g_spawn = rt(blue_spawn_c, key_blue)[1]
+    blue_g_up = list(reversed(blue_g_spawn))
+    blue_g_down = blue_g_spawn
+
     routes = [
         (RED_OUT_A, red_out_a,
          "spawn room -> blue key, over the bridge"),
@@ -180,12 +204,12 @@ def main(argv):
          "red key -> blue stand, the swim home"),
         (BLUE_OUT_B, rt(stand_blue, key_red)[1],
          "blue stand -> red key, the swim out"),
-        (RED_G_SPAWN, rt(red_spawn_c, key_red)[1], "guard: red spawn -> red key"),
-        (RED_G_UP, rt(key_red, stand_red)[1], "guard: red key -> red turn-in"),
-        (RED_G_DOWN, rt(stand_red, key_red)[1], "guard: red turn-in -> red key"),
-        (BLUE_G_SPAWN, rt(blue_spawn_c, key_blue)[1], "guard: blue spawn -> blue key"),
-        (BLUE_G_UP, rt(key_blue, stand_blue)[1], "guard: blue key -> blue turn-in"),
-        (BLUE_G_DOWN, rt(stand_blue, key_blue)[1], "guard: blue turn-in -> blue key"),
+        (BLUE_G_SPAWN, blue_g_spawn, "guard: blue spawn -> blue key"),
+        (BLUE_G_UP, blue_g_up, "guard: blue key -> blue spawn"),
+        (BLUE_G_DOWN, blue_g_down, "guard: blue spawn -> blue key (again)"),
+        (RED_G_SPAWN, mirror(blue_g_spawn), "guard: red spawn -> red key (blue's, mirrored)"),
+        (RED_G_UP, mirror(blue_g_up), "guard: red key -> red spawn (blue's, mirrored)"),
+        (RED_G_DOWN, mirror(blue_g_down), "guard: red spawn -> red key again (blue's, mirrored)"),
     ]
 
     lines = []

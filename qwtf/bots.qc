@@ -226,8 +226,8 @@ void() QWTF_bot_pickroute =
     self.qwtf_chase = world;
 
     // DEFEND (qwtf_bot_skill 0, the default; owner, 2026-10-10: "We can leave
-    // the bots as defence"). Patrol the own fort: spawn -> own key, then key ->
-    // own turn-in and back, forever. Walking over the own key when it lies
+    // the bots as defence"). Patrol the own fort: spawn -> own key -> back to
+    // spawn, forever (scripts/build_nav.py: the roof leg is not walkable yet). Walking over the own key when it lies
     // dropped returns it (ctf.qc's defender touch), so a dropped own key is
     // chased; the enemy key never is. qwtf_bot_skill 1 is the old attacker.
     if (cvar("qwtf_bot_skill") < 1)
