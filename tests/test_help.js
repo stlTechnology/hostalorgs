@@ -227,6 +227,22 @@ function checkBehaviour() {
   if (!api.visible()) fail('H did not show the panel again');
   if (swallowed) fail('the listener swallowed ' + swallowed + ' key event(s); it must swallow none');
   console.log('PASS: installs itself, starts visible, H toggles, other keys ignored, nothing swallowed');
+
+  // A phone (owner, 2026-10-10: "on a phone it's on top of the view"): a touch
+  // screen, 400 wide. The panel must start hidden there, and H still shows it.
+  const nodes2 = {};
+  const el2 = (tag) => ({ tag, id: '', hidden: false, innerHTML: '', textContent: '',
+    appendChild(c) { if (c.id) nodes2[c.id] = c; return c; } });
+  const doc2 = { readyState: 'complete', head: el2('head'), body: el2('body'),
+    createElement: el2, getElementById: (id) => nodes2[id] || null, addEventListener() {} };
+  const listeners2 = [];
+  const phone = { innerWidth: 400, matchMedia: (q) => ({ matches: q === '(pointer: coarse)' }),
+    addEventListener: (type, fn, cap) => listeners2.push({ type, fn, cap }) };
+  vm.runInNewContext(text, { window: phone, document: doc2, module: undefined, console });
+  if (phone.QWTF_HELP.visible()) fail('on a 400-wide touch screen the panel must start hidden');
+  listeners2[0].fn({ key: 'h', repeat: false, stopPropagation() {}, preventDefault() {} });
+  if (!phone.QWTF_HELP.visible()) fail('H must still show the panel on a touch screen with a keyboard');
+  console.log('PASS: on a phone the panel starts hidden (and H still shows it)');
 }
 
 function fail(msg) { console.error('FAIL: ' + msg); process.exit(1); }

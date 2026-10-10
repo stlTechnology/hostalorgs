@@ -106,11 +106,22 @@
   function hide() { const r = root(); if (r) r.hidden = true; return false; }
   function toggle() { return visible() ? hide() : show(); }
 
+  /* Phones and tablets: the panel lists keyboard keys a touch screen does not
+   * have, and on a small screen it covers the view (owner, 2026-10-10). Start
+   * hidden there; the class header still updates and H still works on a tablet
+   * with a keyboard. */
+  function touchOrSmall() {
+    try {
+      return (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) ||
+             (window.innerWidth && window.innerWidth < 900);
+    } catch (e) { return false; }
+  }
+
   let installed = false;
   function install() {
     if (installed) return false;
     installed = true;
-    show();
+    if (touchOrSmall()) { build(); hide(); } else show();
     window.addEventListener('keydown', (e) => {
       if (e.key !== 'h' && e.key !== 'H') return;   // every other key: untouched
       if (e.repeat) return;
@@ -119,7 +130,7 @@
     return true;
   }
 
-  const api = { CONTROLS, CLASSES, build, show, hide, toggle, visible, install, setClass };
+  const api = { CONTROLS, CLASSES, build, show, hide, toggle, visible, install, setClass, touchOrSmall };
   if (typeof window !== 'undefined') {
     window.QWTF_HELP = api;
     if (document.readyState === 'loading')
