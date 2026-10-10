@@ -97,10 +97,16 @@ args=(
   +set net_ice_broker ""
   +set sv_public 0
   +set sv_maxrate 0
-  +set hostname "QWTF local"
+  +set hostname "Hostalorgs"
   +set sv_port "$BIND"
   +set sv_port_tcp "$BIND"
   +set net_enable_websockets 1
+  # The QuakeC VM's memory. Its default is sized for 131072 entities and the
+  # one block it reserves at startup is refused on a 1 GB machine with no swap
+  # ("Fatal error: Out of memory", the Azure B1s, 2026-10-10). The game uses
+  # well under 1 MB of QC memory and about 700 entities on forts2.
+  +set pr_ssqc_memsize 64m
+  +set pr_maxedicts 8192
   # EXTRA goes BEFORE +map, not after: FTE's own help for maxclients says a new
   # value "takes effect on the next map", because SV_SpawnServer sizes the
   # client table from it (and MAX_CLIENTS clamps it). A `+set maxclients 16`
