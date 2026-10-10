@@ -150,6 +150,19 @@ async function main() {
     // join with the menu's defaults, then wait for the server's trail of alpha
     for (let i = 0; i < 120 && !/alpha joined/.test(fs.readFileSync(LOG, 'utf8')); i++) await sleep(500);
     await sleep(2000);
+    // the lobby menu fits a phone held sideways, and Join is on screen
+    // (owner, 2026-10-10: the panel ran off the top and covered the view)
+    let fit = null;
+    for (let i = 0; i < 20 && !(fit && fit.open); i++) { await sleep(500);
+      fit = await c.eval(`(() => { const m = document.getElementById('qwtf-menu');
+        const p = m && m.querySelector('.qwtf-panel'); const j = m && m.querySelector('[data-qwtf-action=join]');
+        if (!p || !j || !window.QWTF_MENU.isOpen()) return { open: false };
+        const pr = p.getBoundingClientRect(), jr = j.getBoundingClientRect();
+        return { open: true, top: pr.top, bottom: pr.bottom, h: innerHeight, jt: jr.top, jb: jr.bottom }; })()`); }
+    if (fit && fit.open && fit.top >= 0 && fit.bottom <= fit.h && fit.jt >= 0 && fit.jb <= fit.h)
+      ok(`the lobby menu fits the phone screen and Join is visible (panel ${fit.top.toFixed(0)}-${fit.bottom.toFixed(0)} of ${fit.h})`);
+    else bad('the lobby menu does not fit the phone screen', JSON.stringify(fit));
+    await c.screenshot(path.join(ART, 'phone-lobby.png'));
     await c.eval('window.QWTF_MENU && window.QWTF_MENU.join()');
     for (let i = 0; i < 40 && !last(); i++) await sleep(500);
     await sleep(2500);

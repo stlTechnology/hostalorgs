@@ -327,6 +327,20 @@ function flushPending() {
 #qwtf-menu button[aria-pressed="true"] { background: #2f5d8f; border-color: #4d86c4; }
 #qwtf-menu .qwtf-sep { height: 1px; background: #2b3646; margin: 12px 0; }
 #qwtf-menu .qwtf-hint { color: #6d7f96; font-size: 12px; margin-top: 10px; }
+/* Never taller than the screen: a phone held sideways is about 390 px tall and
+ * the panel ran off its top, hiding Join (owner, 2026-10-10). */
+#qwtf-menu .qwtf-panel { max-height: calc(100vh - 16px); overflow-y: auto; }
+@media (max-height: 520px) {
+  #qwtf-menu { font-size: 13px; }
+  #qwtf-menu .qwtf-panel { padding: 10px 14px; }
+  #qwtf-menu h1 { margin-bottom: 6px; }
+  #qwtf-menu .qwtf-row { margin-bottom: 5px; }
+  #qwtf-menu .qwtf-label { width: 64px; }
+  #qwtf-menu button { padding: 7px 10px; }
+  #qwtf-menu .qwtf-sep { margin: 6px 0; }
+  #qwtf-menu .qwtf-settings-row { display: none; }
+  #qwtf-menu [data-qwtf-players] { max-height: 22vh !important; }
+}
 `;
 
   function el(tag, attrs, text) {
@@ -384,6 +398,7 @@ function flushPending() {
 
     panel.appendChild(el('div', { class: 'qwtf-sep' }));
     const sensRow = row('Sensitivity');
+    sensRow.classList.add('qwtf-settings-row');
     const sens = el('input', { type: 'range', min: '0.5', max: '8', step: '0.1',
                                 'data-qwtf-setting': 'sensitivity' });
     sens.value = String(state.settings.sensitivity);
@@ -391,6 +406,7 @@ function flushPending() {
     sensRow.appendChild(sens);
 
     const invRow = row('Invert');
+    invRow.classList.add('qwtf-settings-row');
     const inv = el('button', { type: 'button', 'data-qwtf-action': 'invert' }, 'Off');
     inv.addEventListener('click', () => {
       api.setSetting('invert', state.settings.invert ? 0 : 1);
@@ -398,6 +414,7 @@ function flushPending() {
     invRow.appendChild(inv);
 
     const volRow = row('Volume');
+    volRow.classList.add('qwtf-settings-row');
     const vol = el('input', { type: 'range', min: '0', max: '1', step: '0.05',
                                'data-qwtf-setting': 'volume' });
     vol.value = String(state.settings.volume);
@@ -567,7 +584,8 @@ function flushPending() {
       if (line) {
         const tl = team ? ACTIONS[team].label.replace(' team', '') : '?';
         const cl = cls ? ACTIONS[cls].label : '?';
-        line.textContent = lobby ? `You will join: ${tl} team, ${cl}  (Enter to join)`
+        const touch = !!(window.QWTF_TOUCH && window.QWTF_TOUCH.isTouch());
+        line.textContent = lobby ? `You will join: ${tl} team, ${cl}  (${touch ? 'tap Join game' : 'Enter to join'})`
                                  : `Playing: ${tl} team, ${cl}`;
       }
     },
