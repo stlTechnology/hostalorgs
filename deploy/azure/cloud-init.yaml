@@ -26,8 +26,9 @@ write_files:
       SITES="@SITES@"
       SITE_DOMAINS="@SITE_DOMAINS@"
       MAP="@MAP@"
-  # Pull the latest commit; rebuild and restart only if it changed (or if the
-  # container is not running). FORCE=1 rebuilds anyway.
+  # Pull the latest commit; when it changed (or the game is down, or FORCE=1),
+  # hand over to the repo's own deploy step, deploy/azure/vm-update.sh, so
+  # every later change to how the server runs ships through git.
   - path: /opt/game/update.sh
     permissions: '0755'
     content: |
@@ -42,28 +43,7 @@ write_files:
       if [ "$new" = "$have" ] && [ "$running" = true ] && [ "${FORCE:-0}" != 1 ]; then exit 0; fi
       echo "$(date -Is) deploying $new (was ${have:-none})"
       git reset -q --hard FETCH_HEAD
-      . /opt/game/config.env
-      {
-        printf '%s {\n\tencode gzip\n\treverse_proxy 127.0.0.1:8080\n}\n' "$SITES"
-        if [ -n "$SITE_DOMAINS" ] && [ -d /opt/game/src/site ]; then
-          printf '%s {\n\troot * /opt/game/src/site\n\tencode gzip\n\tfile_server\n}\n' "$SITE_DOMAINS"
-        fi
-      } > /etc/caddy/Caddyfile.new
-      if ! cmp -s /etc/caddy/Caddyfile.new /etc/caddy/Caddyfile; then
-        mv /etc/caddy/Caddyfile.new /etc/caddy/Caddyfile
-        systemctl reload caddy || systemctl restart caddy
-      else rm -f /etc/caddy/Caddyfile.new; fi
-      docker build -q --build-arg QWTF_SHA="$new" -t game:"$new" .
-      docker rm -f game 2>/dev/null || true
-      docker run -d --name game --restart unless-stopped \
-        -p 127.0.0.1:8080:8080 \
-        -e GATE_SECRET="$(cat /opt/game/gate.secret)" -e QWTF_MAP="$MAP" \
-        -e QWTF_SERVER_ARGS="+set qwtf_bots 1" \
-        --cap-drop ALL --security-opt no-new-privileges \
-        --memory 700m --pids-limit 256 \
-        game:"$new"
-      echo "$new" > /opt/game/deployed
-      docker image prune -af --filter "until=24h" >/dev/null || true
+      NEW="$new" bash /opt/game/src/deploy/azure/vm-update.sh
       echo "$(date -Is) deployed $new"
   - path: /etc/systemd/system/game-update.service
     content: |
