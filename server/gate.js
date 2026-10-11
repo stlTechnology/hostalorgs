@@ -76,6 +76,27 @@ if (!fs.existsSync(path.join(ROOT, 'landing', 'index.html'))) {
   process.exit(1);
 }
 
+/* ------------------------------------------------------------------ stats
+ * One privacy-safe line per UTC day (owner, 2026-10-10: "do we have a log or
+ * anything to monitor traffic, use, abuse?"). Counts only: no IP address, no
+ * cookie, no name is ever kept or printed. Every GATE_STATS_SECONDS (default an
+ * hour) and on SIGTERM the running totals are printed; when the UTC date
+ * changes, the finished day's line is printed under ITS date, then the counters
+ * start again from zero.
+ *   gate stats 2026-10-10 sessions=12 refused=3 plays=9 peak=4 */
+const STATS_SECONDS = Math.max(1, parseInt(process.env.GATE_STATS_SECONDS || '3600', 10) || 3600);
+const stats = { day: new Date().toISOString().slice(0, 10), sessions: 0, refused: 0, plays: 0, peak: 0 };
+function statsLine() {
+  return `gate stats ${stats.day} sessions=${stats.sessions} refused=${stats.refused} plays=${stats.plays} peak=${stats.peak}`;
+}
+function statsRoll() {
+  const today = new Date().toISOString().slice(0, 10);
+  if (today === stats.day) return;
+  console.log(statsLine());                      // the finished day, under its own date
+  Object.assign(stats, { day: today, sessions: 0, refused: 0, plays: 0, peak: 0 });
+}
+setInterval(() => { statsRoll(); console.log(statsLine()); }, STATS_SECONDS * 1000).unref();
+
 /* ---------------------------------------------------------------- helpers */
 
 const b64u = buf => Buffer.from(buf).toString('base64')
@@ -124,6 +145,9 @@ function wsSlot(ip) {
 function wsOpen(ip) {
   wsPerIp.set(ip, (wsPerIp.get(ip) || 0) + 1);
   wsTotal++;
+  statsRoll();
+  stats.plays++;
+  if (wsTotal > stats.peak) stats.peak = wsTotal;
 }
 function wsClose(ip) {
   const n = (wsPerIp.get(ip) || 0) - 1;
@@ -142,6 +166,8 @@ function rateLimited(ip) {
 function noteSession(ip) {
   const s = ipState.get(ip);
   if (s) s.sessions++;
+  statsRoll();
+  stats.sessions++;
 }
 
 /* An unauthenticated answer. Deliberately tiny and identical for every failure,
@@ -328,7 +354,7 @@ const server = http.createServer((req, res) => {
   // Stage 2: a person asks for a session.
   if (pathname === '/api/session' && req.method === 'POST') {
     const limit = rateLimited(ip);
-    if (limit.over) return deny(res, 429);
+    if (limit.over) { stats.refused++; return deny(res, 429); }
     /* 1 KB cap, enforced by aborting the request rather than buffering it.
      * The only legitimate body is {"nonce":"..."} and a PoW nonce is short, so
      * anything larger is either a mistake or an attempt to make us allocate
@@ -368,7 +394,7 @@ const server = http.createServer((req, res) => {
   // the upgrade handler below, but it must be refused here for plain GETs.
   if (pathname === '/play' || pathname.startsWith('/play/')) {
     if (pathname === '/play/ws') return deny(res, 400); // needs an upgrade
-    if (!verifyToken(cookieToken(req), ip)) return deny(res, 403);
+    if (!verifyToken(cookieToken(req), ip)) { stats.refused++; return deny(res, 403); }
     const rel = pathname.slice('/play'.length) || '/index.html';
     const file = safeResolve(ROOT, rel);
     if (!file) return deny(res, 403);
@@ -503,4 +529,8 @@ server.listen(PORT, HOST, () => {
   console.log(`  pow bits  ${POW_BITS}, session ttl ${SESSION_TTL}s`);
 });
 
-process.on('SIGTERM', () => server.close(() => process.exit(0)));
+process.on('SIGTERM', () => {
+  statsRoll();
+  console.log(statsLine());
+  server.close(() => process.exit(0));
+});
