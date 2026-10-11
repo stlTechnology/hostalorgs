@@ -19,6 +19,8 @@
 #   SITE_DOMAINS  names that serve the studio page (repo site/); default: the
 #              DOMAIN's parent and its www, e.g. "sheebiegame.com, www.sheebiegame.com".
 #              Point those at the VM too (Cloudflare: CNAME @ and www). "" = none.
+#   CLOUDFLARE_ONLY=1  ports 80/443 accept Cloudflare's addresses only, and the
+#              raw azure name is left out of HTTPS (use with proxied DNS names).
 #
 # What it creates (all in resource group "$NAME-rg", delete that group to remove
 # everything): VM, disk, public IP with DNS name $NAME.$LOCATION.cloudapp.azure.com,
@@ -36,6 +38,10 @@ SSH_FROM="${SSH_FROM:-$(curl -fsS https://api.ipify.org)}"
 RG="$NAME-rg"; VM="$NAME-vm"
 FQDN="$NAME.$LOCATION.cloudapp.azure.com"
 SITES="$FQDN${DOMAIN:+, $DOMAIN}"
+if [ "${CLOUDFLARE_ONLY:-0}" = 1 ]; then
+  : "${DOMAIN:?CLOUDFLARE_ONLY=1 needs DOMAIN (the raw azure name will not be reachable)}"
+  SITES="$DOMAIN"
+fi
 if [ -z "${SITE_DOMAINS+set}" ] && [ -n "${DOMAIN:-}" ]; then
   SITE_DOMAINS="${DOMAIN#*.}, www.${DOMAIN#*.}"
 fi
@@ -58,9 +64,17 @@ az vm create -g "$RG" -n "$VM" --image Ubuntu2404 --size "$SIZE" \
   --custom-data "$INIT" -o none
 rm -f "$INIT"
 
-echo "== firewall: 80 and 443 from anywhere, 22 from $SSH_FROM only"
+WEB_FROM="*"
+if [ "${CLOUDFLARE_ONLY:-0}" = 1 ]; then
+  WEB_FROM="$(curl -fsS https://www.cloudflare.com/ips-v4 | tr '\n' ' ')"
+  [ -n "$WEB_FROM" ] || { echo "FATAL: could not fetch Cloudflare's address list" >&2; exit 1; }
+fi
+if [ "$WEB_FROM" = "*" ]; then FROM_TXT="anywhere"; else FROM_TXT="Cloudflare only"; fi
+echo "== firewall: 80 and 443 from $FROM_TXT, 22 from $SSH_FROM only"
+# shellcheck disable=SC2086
 az network nsg rule create -g "$RG" --nsg-name "$NAME-nsg" -n web --priority 100 \
-  --access Allow --protocol Tcp --direction Inbound --destination-port-ranges 80 443 -o none
+  --access Allow --protocol Tcp --direction Inbound --destination-port-ranges 80 443 \
+  --source-address-prefixes $WEB_FROM -o none
 az network nsg rule create -g "$RG" --nsg-name "$NAME-nsg" -n ssh-owner --priority 110 \
   --access Allow --protocol Tcp --direction Inbound --destination-port-ranges 22 \
   --source-address-prefixes "$SSH_FROM/32" -o none
