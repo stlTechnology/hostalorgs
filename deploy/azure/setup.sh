@@ -10,6 +10,10 @@
 #   NAME       resource prefix and DNS label   (default: hostalorgs)
 #   LOCATION   Azure region                    (default: eastus)
 #   SIZE       VM size                         (default: Standard_B1s, ~US$7.60/mo)
+#   ZONE       availability zone, e.g. 1      (default: none; set one when Azure says
+#              the size is "not available in location ... or different zone")
+#   IMAGE      OS image                        (default: Ubuntu2404; for an Arm size such
+#              as Standard_B2pts_v2 use Canonical:ubuntu-24_04-lts:server-arm64:latest)
 #   MAP        map the server runs             (default: forts2)
 #   BUDGET     monthly budget in USD           (default: 20)
 #   EMAIL      budget alert address            (default: your az account's user)
@@ -32,6 +36,8 @@
 set -euo pipefail
 : "${REPO_URL:?set REPO_URL=https://github.com/<you>/<repo>.git}"
 NAME="${NAME:-hostalorgs}"; LOCATION="${LOCATION:-eastus}"; SIZE="${SIZE:-Standard_B1s}"
+IMAGE="${IMAGE:-Ubuntu2404}"
+ZONE_ARG=(); [ -n "${ZONE:-}" ] && ZONE_ARG=(--zone "$ZONE")
 MAP="${MAP:-forts2}"; BUDGET="${BUDGET:-20}"
 EMAIL="${EMAIL:-$(az account show --query user.name -o tsv)}"
 SSH_FROM="${SSH_FROM:-$(curl -fsS https://api.ipify.org)}"
@@ -56,11 +62,15 @@ INIT="$(mktemp)"
 sed -e "s|@REPO_URL@|$REPO_URL|g" -e "s|@SITES@|$SITES|g" -e "s|@SITE_DOMAINS@|$SITE_DOMAINS|g" -e "s|@MAP@|$MAP|g" \
     "$HERE/cloud-init.yaml" > "$INIT"
 
+echo "== network security group $NAME-nsg (no rules yet)"
+# Created explicitly: newer az versions expect --nsg to name an existing group.
+az network nsg create -g "$RG" -n "$NAME-nsg" -o none
+
 echo "== VM $VM ($SIZE, Ubuntu 24.04, SSH key only)"
-az vm create -g "$RG" -n "$VM" --image Ubuntu2404 --size "$SIZE" \
+az vm create -g "$RG" -n "$VM" --image "$IMAGE" --size "$SIZE" "${ZONE_ARG[@]}" \
   --admin-username game --generate-ssh-keys --authentication-type ssh \
   --public-ip-sku Standard --public-ip-address-dns-name "$NAME" \
-  --nsg "$NAME-nsg" --nsg-rule NONE \
+  --nsg "$NAME-nsg" \
   --custom-data "$INIT" -o none
 rm -f "$INIT"
 
