@@ -846,3 +846,25 @@ wrap void() PlayerDie =
         QWTF_key_drop(self);
     prior();
 };
+
+// A carrier who LEAVES drops the key too (owner playtest 2026-10-12: "the key,
+// on one side, seems to be absent, never returned"). The live log had a player
+// take the BLUE key and disconnect ("Player dropped", a phone going to sleep);
+// with no rule for that, the key stayed "carried" by a client that no longer
+// existed -- hidden, no return clock -- for the rest of the match. Dropped
+// where they stood, it returns home after QWTF_KEY_RETURN_TIME like any drop.
+wrap void() ClientDisconnect =
+{
+    if (self.qwtf_carry)
+        QWTF_key_drop(self);
+    prior();
+};
+
+// And a new connection never inherits the slot's old carry: the same live log
+// had the next player in that slot refused 53 takes as "already carrying".
+wrap void() ClientConnect =
+{
+    self.qwtf_carry = world;
+    self.qwtf_carry_team = 0;
+    prior();
+};
